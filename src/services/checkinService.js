@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { enqueueOfflinePulse } from './offlineSyncService';
 
 export const DEFAULT_CHECKIN_CONFIG = {
   question: 'How are things going in your workspace today?',
@@ -127,6 +128,15 @@ export const submitDailyCheckin = async ({
     localStorage.setItem(`unsaid_checkin_${checkinDocId}`, JSON.stringify(checkinRecord));
   } catch {}
 
+  // If offline, enqueue pulse to local queue
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    enqueueOfflinePulse({
+      ...checkinRecord,
+      docId: checkinDocId,
+    });
+    return { alreadySubmitted: false, checkin: { ...checkinRecord, isOfflineQueued: true } };
+  }
+
   // Write to Firestore checkins collection
   if (db) {
     try {
@@ -141,6 +151,12 @@ export const submitDailyCheckin = async ({
         { merge: true }
       );
     } catch (firestoreErr) {
+      if ((typeof navigator !== 'undefined' && !navigator.onLine) || firestoreErr.code === 'unavailable') {
+        enqueueOfflinePulse({
+          ...checkinRecord,
+          docId: checkinDocId,
+        });
+      }
       console.warn('[UNSAID Check-in] Stored locally (Firestore write note):', firestoreErr.message);
     }
   }

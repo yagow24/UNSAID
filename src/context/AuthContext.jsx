@@ -24,7 +24,6 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db, googleProvider, getGoogleProvider, isFirebaseConfigured } from '../config/firebase';
-import { isAuthorizedAdminEmail } from '../config/adminConfig';
 import { AuthContext } from './authContextDef';
 
 // Helper to ensure network calls never hang indefinitely
@@ -41,10 +40,35 @@ const withTimeout = (promise, ms = 10000) =>
     }),
   ]);
 
+// Pending authentication/registration context
+// Tracks intended role based on authentication gateway (Public Admin vs Invited User)
+let pendingAuthContext = null;
+
+const setPendingAuthContext = (ctx) => {
+  pendingAuthContext = ctx;
+  try {
+    if (ctx) {
+      sessionStorage.setItem('unsaid_pending_auth_ctx', JSON.stringify(ctx));
+    } else {
+      sessionStorage.removeItem('unsaid_pending_auth_ctx');
+    }
+  } catch {}
+};
+
+const getPendingAuthContext = () => {
+  if (pendingAuthContext) return pendingAuthContext;
+  try {
+    const raw = sessionStorage.getItem('unsaid_pending_auth_ctx');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [loading, setLoading] = useState(() => Boolean(auth));
+  const [authLoading, setAuthLoading] = useState(() => Boolean(auth));
+  const [profileLoading, setProfileLoading] = useState(false);
 
   // Helper to fetch or create a user profile document in Firestore
   const syncUserProfile = useCallback(async (firebaseUser, additionalData = {}) => {
@@ -53,56 +77,50 @@ export const AuthProvider = ({ children }) => {
       return null;
     }
 
-    const verifiedRole = isAuthorizedAdminEmail(firebaseUser.email) ? 'admin' : 'user';
-
-    // 1. Initial immediate local profile representation
-    let localProfile = null;
+    // 1. Initial cached profile lookup (only if valid profile was previously persisted)
+    let cachedProfile = null;
     try {
       const cached = localStorage.getItem(`unsaid_profile_${firebaseUser.uid}`);
-      if (cached) localProfile = JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.role === 'admin' || parsed.role === 'user')) {
+          cachedProfile = parsed;
+        }
+      }
     } catch {}
 
-    if (!localProfile) {
-      localProfile = {
-        uid: firebaseUser.uid,
-        fullName: additionalData.fullName || firebaseUser.displayName || 'UNSAID Member',
-        email: (firebaseUser.email || '').trim().toLowerCase(),
-        role: verifiedRole,
-        requestedRole: additionalData.requestedRole || 'user',
-        avatarUrl: firebaseUser.photoURL || null,
-        avatarPreference: firebaseUser.photoURL ? 'photo' : 'initials',
-      };
+    // Populate state with cached profile if available to prevent flicker
+    if (cachedProfile) {
+      setUserProfile((prev) => prev || cachedProfile);
     }
 
-    // Immediately make localProfile available to consumers
-    setUserProfile((prev) => prev || localProfile);
-
-    // 2. Background Firestore synchronization with timeout protection
-    if (!db) return localProfile;
+    if (!db) {
+      return cachedProfile;
+    }
 
     try {
       const userRef = doc(db, 'users', firebaseUser.uid);
-      const userSnap = await withTimeout(getDoc(userRef), 2500);
+      const userSnap = await withTimeout(getDoc(userRef), 3500);
 
       if (userSnap.exists()) {
+        // ========================================================
+        // EXISTING PROFILE: PRESERVE PERSISTED FIRESTORE ROLE
+        // ========================================================
         const data = userSnap.data();
-        const shouldBeAdmin = isAuthorizedAdminEmail(firebaseUser.email);
         const updates = {};
 
-        // Only promote to admin if verified by authorization rules
-        if (shouldBeAdmin && data.role !== 'admin') {
-          updates.role = 'admin';
-        }
-        // Preserve existing user profile but populate missing avatar from Google
+        // Populate avatar from Google photo if missing
         if (!data.avatarUrl && firebaseUser.photoURL) {
           updates.avatarUrl = firebaseUser.photoURL;
         }
-        // Ensure avatarPreference exists
         if (!data.avatarPreference) {
           updates.avatarPreference = data.avatarUrl || firebaseUser.photoURL ? 'photo' : 'initials';
         }
         // Enrich placeholder name ONLY if user has never customized their name
-        if ((!data.fullName || data.fullName === 'UNSAID Member') && firebaseUser.displayName) {
+        if (
+          (!data.fullName || data.fullName === 'UNSAID Member' || data.fullName === 'Workspace Admin') &&
+          firebaseUser.displayName
+        ) {
           updates.fullName = firebaseUser.displayName;
         }
 
@@ -112,35 +130,63 @@ export const AuthProvider = ({ children }) => {
           Object.assign(data, updates);
         }
 
-        // Align Firebase Auth displayName with the persisted Firestore profile name
         if (data.fullName && firebaseUser.displayName !== data.fullName) {
           try {
             await updateProfile(firebaseUser, { displayName: data.fullName });
-          } catch {
-            // Non-fatal
-          }
+          } catch {}
         }
 
+        // Clear any pending registration context since profile exists
+        setPendingAuthContext(null);
+
+        // Store profile with preserved role in state and cache
         setUserProfile(data);
         try {
           localStorage.setItem(`unsaid_profile_${firebaseUser.uid}`, JSON.stringify(data));
         } catch {}
         return data;
       } else {
-        // Create new profile record
+        // ========================================================
+        // NEW ACCOUNT CREATION: ROLE DETERMINED BY AUTH CONTEXT
+        // ========================================================
+        const pending = getPendingAuthContext();
+
+        // Target role strictly adheres to context:
+        // - Explicit invite context -> 'user'
+        // - Explicit admin context or default public context -> 'admin'
+        let targetRole = 'admin';
+        if (additionalData.role === 'user' || pending?.role === 'user') {
+          targetRole = 'user';
+        } else if (additionalData.role === 'admin' || pending?.role === 'admin') {
+          targetRole = 'admin';
+        }
+
+        const targetName =
+          additionalData.fullName ||
+          pending?.fullName ||
+          firebaseUser.displayName ||
+          (targetRole === 'admin' ? 'Workspace Admin' : 'UNSAID Member');
+
         const newProfile = {
           uid: firebaseUser.uid,
-          fullName: additionalData.fullName || firebaseUser.displayName || 'UNSAID Member',
+          fullName: targetName.trim(),
           email: (firebaseUser.email || '').trim().toLowerCase(),
-          role: verifiedRole,
-          requestedRole: additionalData.requestedRole || 'user',
+          role: targetRole,
           avatarUrl: firebaseUser.photoURL || null,
           avatarPreference: firebaseUser.photoURL ? 'photo' : 'initials',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
 
-        withTimeout(setDoc(userRef, newProfile), 2500).catch(() => {});
+        await withTimeout(setDoc(userRef, newProfile), 3500);
+
+        if (targetName && firebaseUser.displayName !== targetName) {
+          try {
+            await updateProfile(firebaseUser, { displayName: targetName });
+          } catch {}
+        }
+
+        setPendingAuthContext(null);
         setUserProfile(newProfile);
         try {
           localStorage.setItem(`unsaid_profile_${firebaseUser.uid}`, JSON.stringify(newProfile));
@@ -149,8 +195,11 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn('[UNSAID Auth] Firestore profile sync deferred (offline/timeout):', err.message);
-      setUserProfile((prev) => prev || localProfile);
-      return localProfile;
+      if (cachedProfile) {
+        setUserProfile(cachedProfile);
+        return cachedProfile;
+      }
+      return null;
     }
   }, []);
 
@@ -160,104 +209,249 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setCurrentUser(firebaseUser);
-        // Fast-path hydration: unblock application shell immediately
-        setLoading(false);
-        // Asynchronously synchronize Firestore profile in the background
-        syncUserProfile(firebaseUser);
+        setAuthLoading(false);
+        setProfileLoading(true);
+        try {
+          await syncUserProfile(firebaseUser);
+        } catch (err) {
+          console.error('[UNSAID Auth] syncUserProfile error:', err);
+        } finally {
+          setProfileLoading(false);
+        }
       } else {
         setCurrentUser(null);
         setUserProfile(null);
-        setLoading(false);
+        setAuthLoading(false);
+        setProfileLoading(false);
       }
     });
 
     return () => unsubscribe();
   }, [syncUserProfile]);
 
+  // ==========================================
+  // ADMIN AUTHENTICATION FLOWS (PUBLIC AUTH)
+  // ==========================================
 
+  // Admin Sign Up with Email/Password (Any email creates an ADMIN account)
+  const signUpAsAdmin = async (email, password, fullName = 'Workspace Admin') => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    const normalizedEmail = email.trim().toLowerCase();
 
-  // Sign up with Email and Password
-  const signUp = async (email, password, fullName, requestedRole = 'user') => {
-    if (!auth) {
-      throw new Error('Firebase Authentication is not configured in .env');
+    // Set pending auth context prior to Firebase Auth account creation
+    setPendingAuthContext({
+      role: 'admin',
+      fullName: (fullName || 'Workspace Admin').trim(),
+      flow: 'admin_signup',
+    });
+
+    let userCredential;
+    try {
+      userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (err) {
+      setPendingAuthContext(null);
+      console.error('[UNSAID Admin Auth Diagnostic]', {
+        operation: 'signUpAsAdmin',
+        code: err?.code,
+        message: err?.message,
+      });
+      throw err;
     }
+
+    const user = userCredential.user;
+    try {
+      await updateProfile(user, { displayName: (fullName || 'Workspace Admin').trim() });
+    } catch {}
+
+    // Explicitly confirm role = 'admin' on user profile creation
+    const profile = await syncUserProfile(user, {
+      fullName: (fullName || 'Workspace Admin').trim(),
+      role: 'admin',
+    });
+    return { user, profile };
+  };
+
+  // Admin Sign In with Email/Password (Preserves existing role)
+  const signInAsAdmin = async (email, password) => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    let userCredential;
+    try {
+      userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (err) {
+      console.error('[UNSAID Admin Auth Diagnostic]', {
+        operation: 'signInAsAdmin',
+        code: err?.code,
+        message: err?.message,
+      });
+      throw err;
+    }
+
+    const user = userCredential.user;
+    // Load profile from Firestore (preserving existing role without modification)
+    const profile = await syncUserProfile(user);
+    return { user, profile };
+  };
+
+  // Admin Sign In / Sign Up with Google (Public flow: creates ADMIN if new account)
+  const signInWithGoogleAsAdmin = async () => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    const provider = googleProvider || getGoogleProvider();
+    if (!provider) throw new Error('Google Sign-In provider could not be initialized');
+
+    // Public Google authentication flow: creates ADMIN if account is new
+    setPendingAuthContext({
+      role: 'admin',
+      fullName: null,
+      flow: 'admin_google',
+    });
+
+    let result;
+    try {
+      result = await signInWithPopup(auth, provider);
+    } catch (err) {
+      setPendingAuthContext(null);
+      console.error('[UNSAID Admin Google Auth Diagnostic]', {
+        operation: 'signInWithGoogleAsAdmin',
+        code: err?.code,
+        message: err?.message,
+      });
+      throw err;
+    }
+
+    const user = result.user;
+    const profile = await syncUserProfile(user, { role: 'admin' });
+    return { user, profile };
+  };
+
+  // ==========================================
+  // INVITED USER AUTHENTICATION FLOWS
+  // ==========================================
+
+  // Invited User Sign Up (Requires valid invite token context -> creates USER)
+  const signUpAsInvitedUser = async (email, password, fullName, inviteToken) => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    if (!inviteToken) {
+      throw new Error('User registration requires a valid workspace invitation.');
+    }
+
+    // Set pending auth context: invite flow creates USER
+    setPendingAuthContext({
+      role: 'user',
+      fullName: (fullName || 'UNSAID Member').trim(),
+      inviteToken,
+      flow: 'invite_signup',
+    });
 
     const normalizedEmail = email.trim().toLowerCase();
     let userCredential;
     try {
       userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (err) {
-      console.error('[UNSAID AuthContext Diagnostic]', {
-        operation: 'createUserWithEmailAndPassword',
-        code: err?.code || 'unknown',
-        message: err?.message || String(err),
+      setPendingAuthContext(null);
+      console.error('[UNSAID User Auth Diagnostic]', {
+        operation: 'signUpAsInvitedUser',
+        code: err?.code,
+        message: err?.message,
       });
       throw err;
     }
+
     const user = userCredential.user;
-
-    // Update Firebase Auth user display name
     try {
-      await updateProfile(user, { displayName: fullName.trim() });
-    } catch {
-      // Non-fatal
-    }
+      await updateProfile(user, { displayName: (fullName || 'UNSAID Member').trim() });
+    } catch {}
 
-    // Create Firestore profile record
-    await syncUserProfile(user, { fullName: fullName.trim(), requestedRole });
-    return user;
+    const profile = await syncUserProfile(user, {
+      fullName: (fullName || 'UNSAID Member').trim(),
+      role: 'user',
+    });
+    return { user, profile };
   };
 
-  // Sign in with Email and Password
-  const signIn = async (email, password) => {
-    if (!auth) {
-      throw new Error('Firebase Authentication is not configured in .env');
+  // Invited User Sign In (Preserves existing role)
+  const signInAsInvitedUser = async (email, password, inviteToken) => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    if (!inviteToken) {
+      throw new Error('User authentication requires a valid workspace invitation.');
     }
+
     const normalizedEmail = email.trim().toLowerCase();
     let userCredential;
     try {
       userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (err) {
-      console.error('[UNSAID AuthContext Diagnostic]', {
-        operation: 'signInWithEmailAndPassword',
-        code: err?.code || 'unknown',
-        message: err?.message || String(err),
+      console.error('[UNSAID User Auth Diagnostic]', {
+        operation: 'signInAsInvitedUser',
+        code: err?.code,
+        message: err?.message,
       });
       throw err;
     }
-    await syncUserProfile(userCredential.user);
-    return userCredential.user;
+
+    // Preserve existing role (whether user or admin joining another workspace)
+    const profile = await syncUserProfile(userCredential.user);
+    return { user: userCredential.user, profile };
   };
 
-  // Sign in with Google Popup
-  const signInWithGoogle = async () => {
-    if (!auth) {
-      throw new Error('Firebase Authentication is not configured in .env');
+  // Invited User Sign In with Google (Creates USER if new account)
+  const signInWithGoogleAsInvitedUser = async (inviteToken) => {
+    if (!auth) throw new Error('Firebase Authentication is not configured');
+    if (!inviteToken) {
+      throw new Error('Google Sign-In requires a valid workspace invitation.');
     }
+
     const provider = googleProvider || getGoogleProvider();
-    if (!provider) {
-      throw new Error('Google Sign-In provider could not be initialized');
-    }
+    if (!provider) throw new Error('Google Sign-In provider could not be initialized');
+
+    // Invite Google authentication flow: creates USER if account is new
+    setPendingAuthContext({
+      role: 'user',
+      inviteToken,
+      flow: 'invite_google',
+    });
+
     let result;
     try {
       result = await signInWithPopup(auth, provider);
     } catch (err) {
-      console.error('[UNSAID AuthContext Diagnostic]', {
-        operation: 'signInWithPopup (Google)',
-        code: err?.code || 'unknown',
-        message: err?.message || String(err),
+      setPendingAuthContext(null);
+      console.error('[UNSAID User Google Auth Diagnostic]', {
+        operation: 'signInWithGoogleAsInvitedUser',
+        code: err?.code,
+        message: err?.message,
       });
       throw err;
     }
-    await syncUserProfile(result.user);
-    return result.user;
+
+    const user = result.user;
+    const profile = await syncUserProfile(user, { role: 'user' });
+    return { user, profile };
+  };
+
+  // Legacy Sign In/Up helpers for backward compatibility
+  const signUp = async (email, password, fullName, requestedRole = 'user') => {
+    if (requestedRole === 'admin') {
+      return signUpAsAdmin(email, password, fullName);
+    }
+    return signUpAsInvitedUser(email, password, fullName, 'legacy');
+  };
+
+  const signIn = async (email, password) => {
+    return signInAsAdmin(email, password);
+  };
+
+  const signInWithGoogle = async () => {
+    return signInWithGoogleAsAdmin();
   };
 
   // Sign out
   const signOut = async () => {
+    setPendingAuthContext(null);
     if (!auth) {
       setCurrentUser(null);
       setUserProfile(null);
@@ -358,8 +552,20 @@ export const AuthProvider = ({ children }) => {
     return nextProfile;
   };
 
-  // Real Account Deletion with Re-authentication and Firestore Cleanup
-  const deleteAccount = async ({ password = '' } = {}) => {
+  // Re-authenticate current user with Google popup
+  const reauthenticateWithGoogle = async () => {
+    if (!auth || !auth.currentUser) {
+      throw new Error('User is not authenticated.');
+    }
+    const provider = googleProvider || getGoogleProvider();
+    if (!provider) {
+      throw new Error('Google Sign-In provider could not be initialized');
+    }
+    return reauthenticateWithPopup(auth.currentUser, provider);
+  };
+
+  // Real Account Deletion with Pre-Reauthentication and Scoped Firestore Cleanup
+  const deleteAccount = async ({ password = '', isGoogleReauthenticated = false } = {}) => {
     if (!auth || !auth.currentUser) {
       throw new Error('User is not authenticated.');
     }
@@ -368,10 +574,24 @@ export const AuthProvider = ({ children }) => {
     const uid = user.uid;
     const email = user.email;
 
-    const isPasswordUser = user.providerData.some((p) => p.providerId === 'password');
-    const isGoogleUser = user.providerData.some((p) => p.providerId === 'google.com');
+    const hasPasswordProvider = user.providerData?.some((p) => p.providerId === 'password');
+    const hasGoogleProvider = user.providerData?.some((p) => p.providerId === 'google.com');
 
-    // 1. Clean up user's personal Firestore records first (while session is authenticated)
+    // 1. Mandatory Re-authentication FIRST (Guarantees no data is deleted if re-auth fails)
+    if (hasPasswordProvider) {
+      if (!password) {
+        const reauthError = new Error('Please enter your account password to verify your identity.');
+        reauthError.code = 'auth/missing-password';
+        throw reauthError;
+      }
+      const credential = EmailAuthProvider.credential(email, password);
+      await reauthenticateWithCredential(user, credential);
+    } else if (hasGoogleProvider && !isGoogleReauthenticated) {
+      const provider = googleProvider || getGoogleProvider();
+      await reauthenticateWithPopup(user, provider);
+    }
+
+    // 2. Clean up user's own personal Firestore records while still authenticated
     if (db) {
       try {
         // Delete users/{uid} document
@@ -406,37 +626,15 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    // 2. Perform official Firebase Auth account deletion
-    try {
-      await deleteUser(user);
-    } catch (authErr) {
-      if (authErr.code === 'auth/requires-recent-login') {
-        if (isPasswordUser) {
-          if (!password) {
-            const reauthError = new Error('Re-authentication required. Please enter your password to confirm account deletion.');
-            reauthError.code = 'auth/requires-recent-login';
-            throw reauthError;
-          }
-          const credential = EmailAuthProvider.credential(email, password);
-          await reauthenticateWithCredential(user, credential);
-          await deleteUser(user);
-        } else if (isGoogleUser) {
-          const provider = googleProvider || getGoogleProvider();
-          await reauthenticateWithPopup(user, provider);
-          await deleteUser(user);
-        } else {
-          throw authErr;
-        }
-      } else {
-        throw authErr;
-      }
-    }
+    // 3. Delete Firebase Authentication user account
+    await deleteUser(user);
 
-    // 3. Clear local storage caches
+    // 4. Clear local and session storage caches
     try {
       localStorage.removeItem(`unsaid_profile_${uid}`);
       localStorage.removeItem('unsaid_active_workspace');
       localStorage.removeItem('unsaid_workspaces_cache');
+      sessionStorage.removeItem('unsaid_pending_invite');
     } catch {}
 
     setCurrentUser(null);
@@ -444,20 +642,34 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Derived Admin authorization flag:
-  // Derived strictly from Firestore verified role document and authorized config.
-  // NEVER from localStorage, client state, or query params.
-  const isAdmin = Boolean(
-    userProfile?.role === 'admin' ||
-    (currentUser?.email && isAuthorizedAdminEmail(currentUser.email))
-  );
+  // Derived strictly from Firestore verified role document.
+  // NEVER from localStorage, client state, query params, or hardcoded email lists.
+  const isAdmin = Boolean(userProfile?.role === 'admin');
+
+  // Explicit composite loading state: true while Firebase Auth is initializing,
+  // or when an authenticated user's profile is still being synchronized
+  const loading = authLoading || (Boolean(currentUser) && (profileLoading || !userProfile));
 
   const value = {
     currentUser,
     userProfile,
     loading,
+    authLoading,
+    profileLoading,
     isAuthenticated: Boolean(currentUser),
     isAdmin,
     isConfigured: isFirebaseConfigured,
+    // Admin explicit flows
+    signUpAsAdmin,
+    signInAsAdmin,
+    signInWithGoogleAsAdmin,
+    // Invited user explicit flows
+    signUpAsInvitedUser,
+    signInAsInvitedUser,
+    signInWithGoogleAsInvitedUser,
+    // Reauthentication
+    reauthenticateWithGoogle,
+    // Backward compatibility
     signIn,
     signUp,
     signInWithGoogle,

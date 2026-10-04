@@ -8,7 +8,11 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher';
 import { CreateWorkspaceModal } from '../workspace/CreateWorkspaceModal';
+import { WorkspaceRequestsModal } from '../workspace/WorkspaceRequestsModal';
+import { NotificationsModal } from '../notification/NotificationsModal';
 import { useAuth } from '../../hooks/useAuth';
+import { useWorkspace } from '../../hooks/useWorkspace';
+import { useNotifications } from '../../hooks/useNotifications';
 import { APP_CONFIG } from '../../config/appConfig';
 
 
@@ -18,16 +22,21 @@ import { APP_CONFIG } from '../../config/appConfig';
  * Updates dynamically based on authentication state and user/admin privileges.
  */
 export const Header = ({ onOpenNotifications }) => {
-  const { currentUser, userProfile, isAuthenticated, isAdmin, signOut } = useAuth();
+  const { currentUser, userProfile, isAuthenticated, isAdmin: isPlatformAdmin, signOut } = useAuth();
+  const { isCurrentWorkspaceAdmin, currentWorkspace, pendingRequestsCount } = useWorkspace();
+  const { unreadCount } = useNotifications();
+  const isAdmin = isPlatformAdmin || isCurrentWorkspaceAdmin;
   const navigate = useNavigate();
 
   const location = useLocation();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [requestsModalOpen, setRequestsModalOpen] = useState(false);
+  const [userNotificationsOpen, setUserNotificationsOpen] = useState(false);
 
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/login');
+      navigate('/');
     } catch (err) {
       console.error('[UNSAID Sign Out Error]', err);
     }
@@ -92,6 +101,30 @@ export const Header = ({ onOpenNotifications }) => {
                 >
                   Admin Control
                 </Link>
+                {currentWorkspace && (
+                  <button
+                    type="button"
+                    onClick={() => setRequestsModalOpen(true)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                      pendingRequestsCount > 0
+                        ? 'bg-[var(--cyan)] text-white shadow-sm font-semibold animate-pulse'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--glass-hover)]'
+                    }`}
+                    title="Workspace Join Requests"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Join Requests</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        pendingRequestsCount > 0
+                          ? 'bg-white text-[var(--cyan)]'
+                          : 'bg-[var(--surface-active)] text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {pendingRequestsCount}
+                    </span>
+                  </button>
+                )}
                 <Link
                   to="/workspace"
                   className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -152,12 +185,22 @@ export const Header = ({ onOpenNotifications }) => {
               <Link
                 to="/"
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  isActive('/')
+                  isActive('/') || isActive('/signin') || isActive('/login')
                     ? 'bg-[var(--primary)] text-white shadow-sm font-semibold'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--glass-hover)]'
                 }`}
               >
-                Preview
+                Admin Sign In
+              </Link>
+              <Link
+                to="/signup"
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  isActive('/signup')
+                    ? 'bg-[var(--primary)] text-white shadow-sm font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--glass-hover)]'
+                }`}
+              >
+                Create Admin Account
               </Link>
               <Link
                 to="/showcase"
@@ -182,19 +225,33 @@ export const Header = ({ onOpenNotifications }) => {
                 {isAdmin ? 'Admin' : 'User'}
               </Badge>
 
-              {/* Notifications Placeholder */}
+              {/* Notifications Icon: Live Alerts & Join Requests */}
               <IconButton
                 icon={
                   <div className="relative">
                     <Bell className="w-4 h-4 text-[var(--text)]" />
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--primary)]" />
+                    {(isAdmin ? pendingRequestsCount + unreadCount : unreadCount) > 0 ? (
+                      <span className="absolute -top-1.5 -right-2 px-1 py-0.2 min-w-4 h-4 rounded-full bg-[var(--cyan)] text-white text-[9px] font-bold flex items-center justify-center shadow-sm animate-pulse">
+                        {isAdmin ? pendingRequestsCount + unreadCount : unreadCount}
+                      </span>
+                    ) : (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-transparent" />
+                    )}
                   </div>
                 }
                 ariaLabel="Notifications"
                 variant="glass"
                 size="md"
-                onClick={onOpenNotifications}
-                className="hidden sm:inline-flex"
+                onClick={() => {
+                  if (isAdmin && pendingRequestsCount > 0 && unreadCount === 0) {
+                    setRequestsModalOpen(true);
+                  } else if (onOpenNotifications) {
+                    onOpenNotifications();
+                  } else {
+                    setUserNotificationsOpen(true);
+                  }
+                }}
+                className="hidden sm:inline-flex cursor-pointer"
               />
 
               {/* Theme Toggle */}
@@ -229,15 +286,10 @@ export const Header = ({ onOpenNotifications }) => {
               {/* Theme Toggle */}
               <ThemeToggle />
 
-              {/* Sign In & Sign Up CTAs */}
-              <Link to="/login" className="hidden sm:inline-block">
-                <Button variant="ghost" size="sm">
-                  Sign In
-                </Button>
-              </Link>
-              <Link to="/signup">
+              {/* Admin Portal CTA */}
+              <Link to="/">
                 <Button variant="primary" size="sm">
-                  Get Started
+                  Admin Sign In
                 </Button>
               </Link>
             </>
@@ -252,6 +304,21 @@ export const Header = ({ onOpenNotifications }) => {
           onClose={() => setCreateModalOpen(false)}
         />
       )}
+
+      {/* Admin Workspace Requests Modal */}
+      {isAdmin && currentWorkspace && (
+        <WorkspaceRequestsModal
+          isOpen={requestsModalOpen}
+          onClose={() => setRequestsModalOpen(false)}
+          workspace={currentWorkspace}
+        />
+      )}
+
+      {/* User Notifications Modal */}
+      <NotificationsModal
+        isOpen={userNotificationsOpen}
+        onClose={() => setUserNotificationsOpen(false)}
+      />
     </header>
   );
 };

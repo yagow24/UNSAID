@@ -12,14 +12,9 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && (
-        ('email' in request.auth.token && (
-          request.auth.token.email in ['admin@unsaid.org', 'lead@unsaid.org', 'admin@unsaid.platform', 'sriyagowraj201@gmail.com'] ||
-          request.auth.token.email.lower() in ['admin@unsaid.org', 'lead@unsaid.org', 'admin@unsaid.platform', 'sriyagowraj201@gmail.com']
-        )) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
     function isWorkspaceAdmin(workspaceId) {
@@ -28,31 +23,61 @@ service cloud.firestore {
           (exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
            get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.createdBy == request.auth.uid) ||
           (exists(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)) &&
-           get(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)).data.role == 'admin')
+           get(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)).data.role == 'admin' &&
+           get(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)).data.status == 'active')
         )
       );
+    }
+
+    function hasActiveWorkspace(workspaceId) {
+      let workspacePath = /databases/$(database)/documents/workspaces/$(workspaceId);
+      return exists(workspacePath) && get(workspacePath).data.status == 'active';
+    }
+
+    function hasValidInvite(inviteId, inviteToken, workspaceId) {
+      let invitePath = /databases/$(database)/documents/workspaceInvites/$(inviteId);
+      return inviteId is string && inviteToken is string &&
+        exists(invitePath) &&
+        get(invitePath).data.token == inviteToken &&
+        get(invitePath).data.workspaceId == workspaceId &&
+        get(invitePath).data.status == 'active' &&
+        (!('expiresAt' in get(invitePath).data) || get(invitePath).data.expiresAt > request.time) &&
+        (!('maxUses' in get(invitePath).data) ||
+          get(invitePath).data.usedCount < get(invitePath).data.maxUses);
+    }
+
+    function isValidJoinRequest(requestId, data) {
+      return isAuthenticated() &&
+        data.keys().hasAll([
+          'userId', 'userName', 'userEmail', 'workspaceId', 'workspaceName',
+          'inviteId', 'inviteToken', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        requestId == data.userId + '_' + data.workspaceId &&
+        data.userId == request.auth.uid &&
+        data.workspaceId is string &&
+        data.status == 'pending' &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        hasActiveWorkspace(data.workspaceId) &&
+        hasValidInvite(data.inviteId, data.inviteToken, data.workspaceId);
     }
 
     function isWorkspaceMember(workspaceId) {
       return isAuthenticated() && (
         isWorkspaceAdmin(workspaceId) ||
-        exists(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)) ||
-        (exists(/databases/$(database)/documents/workspaceMembers/$(workspaceId)) &&
-         get(/databases/$(database)/documents/workspaceMembers/$(workspaceId)).data.userId == request.auth.uid)
+        (exists(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)) &&
+         get(/databases/$(database)/documents/workspaceMembers/$(request.auth.uid + '_' + workspaceId)).data.status == 'active')
       );
     }
 
     // 1. Users Collection
     // Users can read any user's public info (name, avatar, role)
-    // Authorized admins can promote, while normal users cannot modify role/uid/email
+    // Initial profile creation permits role in ['user', 'admin'] based on registration flow
+    // Subsequent updates strictly forbid modifying role, uid, or email
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && (
-        request.resource.data.role == 'user' ||
-        ('email' in request.auth.token && (
-          request.auth.token.email in ['admin@unsaid.org', 'lead@unsaid.org', 'admin@unsaid.platform', 'sriyagowraj201@gmail.com'] ||
-          request.auth.token.email.lower() in ['admin@unsaid.org', 'lead@unsaid.org', 'admin@unsaid.platform', 'sriyagowraj201@gmail.com']
-        ))
+        request.resource.data.role in ['user', 'admin']
       );
       allow update: if isOwner(userId) && (
         isAdmin() ||
@@ -84,34 +109,100 @@ service cloud.firestore {
     // Users can create their own join requests and read their own requests
     // Admins can read and review (update) requests for their workspace
     match /workspaceRequests/{requestId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid || isWorkspaceAdmin(resource.data.workspaceId)
+      );
+      allow list: if isAuthenticated() && (
         resource.data.userId == request.auth.uid || isWorkspaceAdmin(resource.data.workspaceId)
       );
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      allow update: if isWorkspaceAdmin(resource.data.workspaceId);
-      allow delete: if isWorkspaceAdmin(resource.data.workspaceId) || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isValidJoinRequest(requestId, request.resource.data);
+      allow update: if (
+        isWorkspaceAdmin(resource.data.workspaceId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.workspaceId == resource.data.workspaceId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy',
+          'reviewedAt', 'reviewedBy', 'updatedAt'
+        ]) &&
+        request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reviewedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          (request.resource.data.status == 'approved' &&
+            request.resource.data.approvedBy == request.auth.uid &&
+            request.resource.data.approvedAt == request.time) ||
+          (request.resource.data.status == 'rejected' &&
+            request.resource.data.rejectedBy == request.auth.uid &&
+            request.resource.data.rejectedAt == request.time)
+        )
+      ) || (
+        isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        resource.data.status == 'rejected' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'userName', 'userEmail', 'workspaceName', 'inviteId', 'inviteToken',
+          'status', 'createdAt', 'updatedAt', 'requestedAt', 'reviewedAt',
+          'reviewedBy', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy'
+        ]) &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.workspaceId == resource.data.workspaceId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        isValidJoinRequest(requestId, request.resource.data)
+      );
     }
 
     // 5. Workspace Members Collection
     // Members can read memberships for their workspaces
-    // Only administrators can add or modify memberships, members can remove own membership
+    // Membership creation is admin-only and happens together with request approval.
     match /workspaceMembers/{memberId} {
       allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isWorkspaceAdmin(resource.data.workspaceId)
+        resource == null || resource.data.userId == request.auth.uid || isWorkspaceAdmin(resource.data.workspaceId)
       );
-      allow create, update: if isWorkspaceAdmin(request.resource.data.workspaceId);
+      allow create: if isWorkspaceAdmin(request.resource.data.workspaceId) &&
+        request.resource.data.userId is string &&
+        request.resource.data.role in ['admin', 'member'] &&
+        request.resource.data.status == 'active' &&
+        memberId == request.resource.data.userId + '_' + request.resource.data.workspaceId;
+      allow update: if (isWorkspaceAdmin(resource.data.workspaceId) &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.workspaceId == resource.data.workspaceId) || (
+        isAuthenticated() &&
+        isOwner(resource.data.userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'updatedAt'])
+      );
       allow delete: if isWorkspaceAdmin(resource.data.workspaceId) || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
-    // 6. Problems Collection
+    // 6. Notifications Collection
+    // Users can read, update (mark as read), and delete their own notifications
+    // Authenticated users (such as admins approving/rejecting) can create notifications for recipient users
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId is string &&
+        request.resource.data.userId.size() > 0;
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'type', 'requestId']));
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // 7. Problems Collection
     // Workspace members and admins can read problems for their authorized workspace
+    // Confidential problems are strictly readable only by the author or workspace admins
     // Authenticated members can submit problems for their authorized workspace
     // Admins or workspace managers can update/resolve or delete problems
     match /problems/{problemId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
+        isWorkspaceAdmin(resource.data.workspaceId) ||
         isWorkspaceMember(resource.data.workspaceId)
       );
       allow create: if isAuthenticated() &&
@@ -122,10 +213,38 @@ service cloud.firestore {
         isWorkspaceAdmin(resource.data.workspaceId) ||
         ((isOwner(resource.data.authorId) || (('createdBy' in resource.data) && isOwner(resource.data.createdBy))) &&
          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workspaceId', 'authorId', 'createdBy'])) ||
-        // Allow upvoting: only updating upvotesCount and upvotedBy
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotesCount', 'upvotedBy'])
+        // Community interaction: members can update upvotes, acknowledgements, escalation votes, quality feedback, recurrence, and read state
+        (isWorkspaceMember(resource.data.workspaceId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'upvotesCount', 'upvotedBy',
+           'acknowledgements', 'acknowledgementsCount', 'isArchivedFromFeed', 'archivedAt',
+           'escalationVotes',
+           'qualityFeedback',
+           'isRecurring', 'recurringCount', 'linkedProblemId', 'linkedProblemTitle',
+           'updatedAt',
+           'readByAdmin', 'readByUser'
+         ]))
       );
       allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
+
+      // Two-way messaging subcollection
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isWorkspaceMember(get(/databases/$(database)/documents/problems/$(problemId)).data.workspaceId)
+        );
+        allow create: if isAuthenticated() &&
+          request.resource.data.authorId == request.auth.uid &&
+          (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId));
+        allow update, delete: if isAuthenticated() && (
+          isAdmin() ||
+          isWorkspaceAdmin(resource.data.workspaceId) ||
+          resource.data.authorId == request.auth.uid ||
+          get(/databases/$(database)/documents/problems/$(problemId)).data.authorId == request.auth.uid ||
+          (('createdBy' in get(/databases/$(database)/documents/problems/$(problemId)).data) &&
+           get(/databases/$(database)/documents/problems/$(problemId)).data.createdBy == request.auth.uid)
+        );
+      }
     }
 
     // 7. Checkins Collection (Daily Pulse)
@@ -158,6 +277,127 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (
         isAdmin() ||
         isWorkspaceMember(resource.data.workspaceId)
+      );
+    }
+
+    // 9. Problem Messages Collection (Two-Way Messaging)
+    // Only authorized workspace members can read and send messages for problems in their workspace
+    // For confidential problems, only the author or workspace admins can access or post messages
+    // Admins/staff can post official replies; only authors or admins can dismiss unhelpful comments
+    match /problemMessages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (isWorkspaceMember(resource.data.workspaceId) && (
+          !exists(/databases/$(database)/documents/problems/$(resource.data.problemId)) ||
+          !('isConfidential' in get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data) ||
+          get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data.isConfidential == false ||
+          get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data.authorId == request.auth.uid ||
+          (('createdBy' in get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data) &&
+           get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data.createdBy == request.auth.uid) ||
+          isWorkspaceAdmin(resource.data.workspaceId)
+        ))
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.senderId == request.auth.uid &&
+        (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId)) &&
+        (!('isOfficial' in request.resource.data) || request.resource.data.isOfficial == false || isWorkspaceAdmin(request.resource.data.workspaceId)) &&
+        (
+          !exists(/databases/$(database)/documents/problems/$(request.resource.data.problemId)) ||
+          !('isConfidential' in get(/databases/$(database)/documents/problems/$(request.resource.data.problemId)).data) ||
+          get(/databases/$(database)/documents/problems/$(request.resource.data.problemId)).data.isConfidential == false ||
+          get(/databases/$(database)/documents/problems/$(request.resource.data.problemId)).data.authorId == request.auth.uid ||
+          (('createdBy' in get(/databases/$(database)/documents/problems/$(request.resource.data.problemId)).data) &&
+           get(/databases/$(database)/documents/problems/$(request.resource.data.problemId)).data.createdBy == request.auth.uid) ||
+          isWorkspaceAdmin(request.resource.data.workspaceId)
+        );
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceAdmin(resource.data.workspaceId) ||
+        resource.data.senderId == request.auth.uid ||
+        (exists(/databases/$(database)/documents/problems/$(resource.data.problemId)) &&
+         (get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data.authorId == request.auth.uid ||
+          (('createdBy' in get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data) &&
+           get(/databases/$(database)/documents/problems/$(resource.data.problemId)).data.createdBy == request.auth.uid)))
+      );
+      allow delete: if isAdmin() || isWorkspaceAdmin(resource.data.workspaceId) || resource.data.senderId == request.auth.uid;
+    }
+
+    // 10. Acknowledgements Collection (Dynamic Acknowledgement)
+    // Deterministic ID: {problemId}_{userId}. One acknowledgement per user per problem.
+    match /acknowledgements/{ackId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceMember(resource.data.workspaceId)
+      );
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+
+    // 11. Escalation Votes Collection (Community Escalation)
+    // Deterministic ID: {problemId}_{userId}. One vote per user.
+    match /escalationVotes/{voteId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceMember(resource.data.workspaceId)
+      );
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+
+    // 12. Problem Feedback Collection (Quality Feedback)
+    // Deterministic ID: {problemId}_{userId}. One feedback entry per user per problem.
+    match /problemFeedback/{feedbackId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceMember(resource.data.workspaceId)
+      );
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+
+    // 13. Problem Polls Collection (Community Polls)
+    // One primary poll per problem, document ID is problemId
+    match /problemPolls/{pollId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceMember(resource.data.workspaceId)
+      );
+      allow create: if isAuthenticated() && (
+        isAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId)
+      );
+      allow update, delete: if isAuthenticated() && (
+        isAdmin() || isWorkspaceAdmin(resource.data.workspaceId)
+      );
+    }
+
+    // 14. Problem Poll Responses Collection
+    // Deterministic ID: {problemId}_{userId}. One vote per user.
+    match /problemPollResponses/{responseId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceMember(resource.data.workspaceId)
+      );
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (isAdmin() || isWorkspaceMember(request.resource.data.workspaceId));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
       );
     }
   }

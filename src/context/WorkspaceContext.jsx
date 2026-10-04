@@ -4,15 +4,15 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
+  writeBatch,
   query,
   where,
   serverTimestamp,
   Timestamp,
-  increment,
+  onSnapshot,
 } from 'firebase/firestore';
 
 import { db } from '../config/firebase';
@@ -20,9 +20,15 @@ import { useAuth } from '../hooks/useAuth';
 import { DEFAULT_INVITE_EXPIRY_DAYS } from '../config/appConfig';
 import { generateSecureToken } from '../utils/security';
 import { WorkspaceContext } from './workspaceContextDef';
+import {
+  subscribeToPendingWorkspaceRequests,
+  createWorkspaceJoinRequest,
+  approveWorkspaceJoinRequest,
+  rejectWorkspaceJoinRequest,
+} from '../services/workspaceRequestService';
 
-const ACTIVE_WORKSPACE_KEY = 'unsaid-active-workspace-id';
-const WORKSPACES_CACHE_KEY = 'unsaid-cached-workspaces';
+const activeWorkspaceKeyFor = (userId) => `unsaid-active-workspace-id-${userId}`;
+const workspacesCacheKeyFor = (userId) => `unsaid-cached-workspaces-${userId}`;
 
 // Helper to ensure network calls never hang indefinitely
 const withTimeout = (promise, ms = 10000) =>
@@ -40,24 +46,8 @@ const withTimeout = (promise, ms = 10000) =>
 
 export const WorkspaceProvider = ({ children }) => {
   const { currentUser, userProfile, isAdmin } = useAuth();
-  const [workspaces, setWorkspaces] = useState(() => {
-    try {
-      const cached = localStorage.getItem(WORKSPACES_CACHE_KEY);
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return [];
-  });
-  const [currentWorkspace, setCurrentWorkspace] = useState(() => {
-    try {
-      const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-      const cached = localStorage.getItem(WORKSPACES_CACHE_KEY);
-      if (cached) {
-        const list = JSON.parse(cached);
-        return list.find((w) => w.id === savedId) || list[0] || null;
-      }
-    } catch {}
-    return null;
-  });
+  const [workspaces, setWorkspaces] = useState([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [memberships, setMemberships] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -67,16 +57,28 @@ export const WorkspaceProvider = ({ children }) => {
     workspacesLengthRef.current = workspaces.length;
   }, [workspaces.length]);
 
+  // Keep cached workspace selection isolated per signed-in account.
+  useEffect(() => {
+    setWorkspaces([]);
+    setCurrentWorkspace(null);
+    setMemberships([]);
+  }, [currentUserId]);
+
   // Load authorized workspaces for current user
   const loadWorkspaces = useCallback(async () => {
-    if (!currentUserId) {
-      setWorkspaces([]);
-      setCurrentWorkspace(null);
-      setMemberships([]);
+    if (!currentUserId || !userProfile) {
+      if (!currentUserId) {
+        setWorkspaces([]);
+        setCurrentWorkspace(null);
+        setMemberships([]);
+      }
       return;
     }
 
     if (!db) return;
+
+    const cacheKey = workspacesCacheKeyFor(currentUserId);
+    const activeKey = activeWorkspaceKeyFor(currentUserId);
 
     if (workspacesLengthRef.current === 0) {
       setLoading(true);
@@ -90,21 +92,16 @@ export const WorkspaceProvider = ({ children }) => {
         const snap = await withTimeout(getDocs(q), 2500);
         const wsList = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        if (wsList.length > 0) {
-          setWorkspaces(wsList);
-          try {
-            localStorage.setItem(WORKSPACES_CACHE_KEY, JSON.stringify(wsList));
-          } catch {}
+        setWorkspaces(wsList);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(wsList));
+        } catch {}
 
-          const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-          setCurrentWorkspace((prev) => {
-            const desiredId = savedId || prev?.id;
-            const matched = wsList.find((w) => w.id === desiredId);
-            if (matched) return matched;
-            if (prev && wsList.some((w) => w.id === prev.id)) return prev;
-            return wsList[0] || null;
-          });
-        }
+        const savedId = localStorage.getItem(activeKey);
+        setCurrentWorkspace((prev) => {
+          const desiredId = savedId || prev?.id;
+          return wsList.find((w) => w.id === desiredId) || wsList[0] || null;
+        });
 
         // Fetch admin memberships with timeout
         const memRef = collection(db, 'workspaceMembers');
@@ -121,7 +118,7 @@ export const WorkspaceProvider = ({ children }) => {
         const memSnap = await withTimeout(getDocs(memQ), 6000);
         const allMemList = memSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         // Include active/approved memberships (excluding revoked/inactive)
-        const memList = allMemList.filter((m) => m.status !== 'revoked' && m.status !== 'inactive');
+        const memList = allMemList.filter((m) => m.status === 'active');
         setMemberships(memList);
 
         // Also check if user created any active workspace directly
@@ -144,7 +141,7 @@ export const WorkspaceProvider = ({ children }) => {
             } catch {
               // Graceful fallback from local cache if network timeout occurred
               try {
-                const cached = localStorage.getItem(WORKSPACES_CACHE_KEY);
+                const cached = localStorage.getItem(cacheKey);
                 if (cached) {
                   const list = JSON.parse(cached);
                   return list.find((w) => w.id === m.workspaceId) || null;
@@ -168,28 +165,23 @@ export const WorkspaceProvider = ({ children }) => {
           }
         }
 
-        if (validWorkspaces.length > 0) {
-          setWorkspaces(validWorkspaces);
-          try {
-            localStorage.setItem(WORKSPACES_CACHE_KEY, JSON.stringify(validWorkspaces));
-          } catch {}
+        setWorkspaces(validWorkspaces);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(validWorkspaces));
+        } catch {}
 
-          const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-          setCurrentWorkspace((prev) => {
-            const desiredId = savedId || prev?.id;
-            const matched = validWorkspaces.find((w) => w.id === desiredId);
-            if (matched) return matched;
-            if (prev && validWorkspaces.some((w) => w.id === prev.id)) return prev;
-            return validWorkspaces[0] || null;
-          });
-        }
+        const savedId = localStorage.getItem(activeKey);
+        setCurrentWorkspace((prev) => {
+          const desiredId = savedId || prev?.id;
+          return validWorkspaces.find((w) => w.id === desiredId) || validWorkspaces[0] || null;
+        });
       }
     } catch (err) {
       console.warn('[UNSAID Workspace] Workspace load deferred (offline/timeout):', err.message);
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, isAdmin]);
+  }, [currentUserId, userProfile, isAdmin]);
 
   useEffect(() => {
     let ignore = false;
@@ -205,25 +197,48 @@ export const WorkspaceProvider = ({ children }) => {
   }, [loadWorkspaces]);
 
 
-  // Switch active workspace with access verification
-  const switchWorkspace = (workspaceId) => {
-    if (!workspaceId) return false;
+  // Real-time listener for current user's workspace memberships to immediately reflect approvals
+  useEffect(() => {
+    if (!currentUserId || !db) return;
+
+    const memRef = collection(db, 'workspaceMembers');
+    const memQ = query(memRef, where('userId', '==', currentUserId));
+    const unsubscribe = onSnapshot(
+      memQ,
+      () => {
+        loadWorkspaces();
+      },
+      (err) => {
+        console.warn('[UNSAID] Real-time memberships listener notice:', err.message);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUserId, loadWorkspaces]);
+
+  // Switch only among workspaces already authorized for the signed-in account.
+  const switchWorkspace = async (workspaceId) => {
+    if (!workspaceId || !currentUserId) return false;
     const target = workspaces.find((w) => w.id === workspaceId);
-    if (target) {
-      setCurrentWorkspace(target);
-      try {
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, target.id);
-      } catch {}
-      return true;
+    const hasMembership = memberships.some(
+      (membership) =>
+        membership.workspaceId === workspaceId &&
+        membership.status === 'active'
+    );
+    const isCreator = target?.createdBy === currentUserId;
+
+    if (!target || (!isAdmin && !isCreator && !hasMembership)) {
+      console.warn('[UNSAID] Refused workspace selection without active access:', workspaceId);
+      return false;
     }
-    if (currentWorkspace && currentWorkspace.id === workspaceId) {
-      try {
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, currentWorkspace.id);
-      } catch {}
-      return true;
-    }
-    console.warn('[UNSAID] Attempted to switch to unapproved workspace:', workspaceId);
-    return false;
+
+    setCurrentWorkspace(target);
+    try {
+      localStorage.setItem(activeWorkspaceKeyFor(currentUserId), target.id);
+    } catch {}
+    return true;
   };
 
   // Create workspace (Admin only)
@@ -233,6 +248,9 @@ export const WorkspaceProvider = ({ children }) => {
     }
     if (!currentUser) {
       throw new Error('User is not authenticated.');
+    }
+    if (!db) {
+      throw new Error('Database service unavailable. Workspace creation requires Firestore.');
     }
 
     const trimmedName = (name || '').trim();
@@ -246,15 +264,8 @@ export const WorkspaceProvider = ({ children }) => {
       throw new Error('Please specify a domain type.');
     }
 
-    // 1. Synchronously generate valid Firestore document reference and ID client-side
-    let newWorkspaceId;
-    let wsDocRef = null;
-    if (db) {
-      wsDocRef = doc(collection(db, 'workspaces'));
-      newWorkspaceId = wsDocRef.id;
-    } else {
-      newWorkspaceId = 'ws_' + Math.random().toString(36).substring(2, 10);
-    }
+    const wsDocRef = doc(collection(db, 'workspaces'));
+    const newWorkspaceId = wsDocRef.id;
 
     const wsData = {
       name: trimmedName,
@@ -278,24 +289,37 @@ export const WorkspaceProvider = ({ children }) => {
       updatedAt: new Date().toISOString(),
     };
 
-    // 2. Immediately update local workspaces state & persistent cache
+    // Persist workspace and owner membership together before exposing the workspace.
+    const memberDocId = `${currentUser.uid}_${newWorkspaceId}`;
+    const memberDocRef = doc(db, 'workspaceMembers', memberDocId);
+    const batch = writeBatch(db);
+    batch.set(wsDocRef, wsData);
+    batch.set(memberDocRef, {
+      workspaceId: newWorkspaceId,
+      userId: currentUser.uid,
+      role: 'admin',
+      status: 'active',
+      joinedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await withTimeout(batch.commit(), 10000);
+
+    // Only expose a workspace locally after both Firestore writes succeed.
     setWorkspaces((prev) => {
       const exists = prev.some((w) => w.id === newWorkspaceId);
       const nextList = exists ? prev : [newWorkspace, ...prev];
       try {
-        localStorage.setItem(WORKSPACES_CACHE_KEY, JSON.stringify(nextList));
+        localStorage.setItem(workspacesCacheKeyFor(currentUser.uid), JSON.stringify(nextList));
       } catch {}
       return nextList;
     });
 
-    // 3. Immediately select newly created workspace as active and persist
     setCurrentWorkspace(newWorkspace);
     try {
-      localStorage.setItem(ACTIVE_WORKSPACE_KEY, newWorkspaceId);
+      localStorage.setItem(activeWorkspaceKeyFor(currentUser.uid), newWorkspaceId);
     } catch {}
 
-    // 4. Update local memberships state
-    const memberDocId = `${currentUser.uid}_${newWorkspaceId}`;
     setMemberships((prev) => [
       ...prev.filter((m) => m.workspaceId !== newWorkspaceId),
       {
@@ -306,27 +330,6 @@ export const WorkspaceProvider = ({ children }) => {
         status: 'active',
       },
     ]);
-
-    // 5. Asynchronously persist to Firestore with timeout protection
-    if (db && wsDocRef) {
-      const memberDocRef = doc(db, 'workspaceMembers', memberDocId);
-      const memberData = {
-        workspaceId: newWorkspaceId,
-        userId: currentUser.uid,
-        role: 'admin',
-        status: 'active',
-        joinedAt: serverTimestamp(),
-      };
-
-      const firestoreWrites = Promise.all([
-        setDoc(wsDocRef, wsData),
-        setDoc(memberDocRef, memberData),
-      ]);
-
-      withTimeout(firestoreWrites, 2500).catch((fsErr) => {
-        console.warn('[UNSAID Workspace] Firestore write deferred (offline/timeout):', fsErr.message);
-      });
-    }
 
     return newWorkspace;
   };
@@ -578,8 +581,15 @@ export const WorkspaceProvider = ({ children }) => {
       const wsRef = doc(db, 'workspaces', invite.workspaceId);
       const wsSnap = await withTimeout(getDoc(wsRef), 3000);
 
-      if (!wsSnap.exists() || wsSnap.data().status === 'archived') {
+      if (!wsSnap.exists() || wsSnap.data().status !== 'active') {
         return { error: 'not_found', message: 'The associated workspace is no longer active.' };
+      }
+
+      if (
+        Number.isFinite(invite.maxUses) &&
+        Number(invite.usedCount || 0) >= Number(invite.maxUses)
+      ) {
+        return { error: 'inactive', message: 'This workspace invitation has reached its usage limit.' };
       }
 
       const workspace = { id: wsSnap.id, ...wsSnap.data() };
@@ -590,70 +600,59 @@ export const WorkspaceProvider = ({ children }) => {
     }
   }, []);
 
-  // Request to join workspace via invite
-  const requestJoinWorkspace = async ({ inviteId, inviteToken, workspaceId, workspaceName }) => {
+  // Legacy entry point retained for callers; invite acceptance now creates a pending request.
+  const acceptInviteAndJoinWorkspace = async ({ invite, workspace }) => {
     if (!currentUser) {
+      throw new Error('You must be signed in to join this workspace.');
+    }
+    const wsId = workspace?.id || invite?.workspaceId;
+    if (!wsId || !invite?.id || !invite?.token || invite.workspaceId !== wsId) {
+      throw new Error('Invalid workspace specification.');
+    }
+    const result = await createWorkspaceJoinRequest({
+      userId: currentUser.uid,
+      userName: userProfile?.fullName || currentUser.displayName || 'UNSAID Member',
+      userEmail: currentUser.email || '',
+      workspaceId: wsId,
+      workspaceName: workspace?.name || invite.workspaceName || 'Workspace',
+      inviteId: invite.id,
+      inviteToken: invite.token,
+    });
+
+    return { ...result, workspace };
+  };
+
+  // Request to join workspace via invite using deterministic `${userId}_${workspaceId}`
+  const requestJoinWorkspace = async ({ userId, inviteId, inviteToken, workspaceId, workspaceName }) => {
+    const effectiveUserId = userId || currentUser?.uid;
+    if (!effectiveUserId) {
       throw new Error('You must be signed in to request access to this workspace.');
     }
-    if (!db) {
-      throw new Error('Database service unavailable.');
-    }
-
-    // 1. Check if already an active member
-    const memRef = collection(db, 'workspaceMembers');
-    const memQ = query(
-      memRef,
-      where('workspaceId', '==', workspaceId),
-      where('userId', '==', currentUser.uid),
-      where('status', '==', 'active')
-    );
-    const memSnap = await getDocs(memQ);
-    if (!memSnap.empty) {
-      return { status: 'already_member', message: "You're already a member of this workspace." };
-    }
-
-    // 2. Check if pending request exists (prevent duplicates)
-    const reqRef = collection(db, 'workspaceRequests');
-    const reqQ = query(
-      reqRef,
-      where('workspaceId', '==', workspaceId),
-      where('userId', '==', currentUser.uid),
-      where('status', '==', 'pending')
-    );
-    const reqSnap = await getDocs(reqQ);
-    if (!reqSnap.empty) {
-      return { status: 'already_requested', message: 'Join request already sent.' };
-    }
-
-    // Resolve workspace name if not passed
     const resolvedName =
       workspaceName || workspaces.find((w) => w.id === workspaceId)?.name || 'Workspace';
 
-    // 3. Create join request in workspaceRequests
-    const requestData = {
+    return await createWorkspaceJoinRequest({
+      userId: effectiveUserId,
+      userName: userProfile?.fullName || currentUser?.displayName || 'UNSAID Member',
+      userEmail: currentUser?.email || '',
       workspaceId,
       workspaceName: resolvedName,
-      userId: currentUser.uid,
-      userEmail: currentUser.email || '',
-      userName: userProfile?.fullName || currentUser.displayName || 'UNSAID Member',
-      inviteToken: inviteToken || '',
-      inviteId: inviteId || null,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-      requestedAt: serverTimestamp(),
-      reviewedAt: null,
-      reviewedBy: null,
-    };
-
-    const docRef = await addDoc(reqRef, requestData);
-    return { id: docRef.id, ...requestData };
+      inviteId,
+      inviteToken,
+    });
   };
 
   // Get current user's request status for a specific workspace
   const getUserRequestForWorkspace = useCallback(async (workspaceId) => {
-    if (!currentUser || !db) return null;
+    if (!currentUser?.uid || !db || !workspaceId) return null;
 
     try {
+      const reqDocId = `${currentUser.uid}_${workspaceId}`;
+      const docSnap = await getDoc(doc(db, 'workspaceRequests', reqDocId));
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() };
+      }
+
       const reqRef = collection(db, 'workspaceRequests');
       const q = query(
         reqRef,
@@ -663,7 +662,6 @@ export const WorkspaceProvider = ({ children }) => {
       const snap = await getDocs(q);
       if (snap.empty) return null;
 
-      // Return the most recent request
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       docs.sort((a, b) => {
         const timeA =
@@ -680,7 +678,7 @@ export const WorkspaceProvider = ({ children }) => {
 
   // Fetch join requests for admin review strictly scoped to the workspace
   const getWorkspaceRequests = useCallback(async (workspaceId) => {
-    if (!isAdmin || !db || !workspaceId) return [];
+    if (!db || !workspaceId) return [];
 
     try {
       const reqRef = collection(db, 'workspaceRequests');
@@ -702,103 +700,46 @@ export const WorkspaceProvider = ({ children }) => {
       console.error('[UNSAID] Error loading workspace requests for workspaceId:', workspaceId, err);
       return [];
     }
-  }, [isAdmin]);
+  }, []);
 
   // Review a join request (Approve or Reject)
   const reviewJoinRequest = async (requestId, decision, workspaceId, targetUserId, inviteTokenOrId) => {
-    if (!isAdmin) {
+    if (!currentUserId) {
+      throw new Error('You must be signed in to review join requests.');
+    }
+    const isWsAdmin =
+      isAdmin ||
+      currentWorkspace?.createdBy === currentUserId ||
+      memberships.some(
+        (m) =>
+          m.workspaceId === workspaceId &&
+          m.status === 'active' &&
+          m.role === 'admin'
+      );
+
+    if (!isWsAdmin) {
       throw new Error('Only administrators can approve or reject join requests.');
-    }
-    if (!['approved', 'rejected'].includes(decision)) {
-      throw new Error('Invalid request decision.');
-    }
-    if (!db) {
-      throw new Error('Database service unavailable.');
-    }
-    if (!workspaceId) {
-      throw new Error('Target workspace ID is required.');
-    }
-
-    const reqDocRef = doc(db, 'workspaceRequests', requestId);
-    const reqSnap = await getDoc(reqDocRef);
-
-    if (!reqSnap.exists()) {
-      throw new Error('Join request not found.');
-    }
-
-    const reqData = reqSnap.data();
-    if (reqData.workspaceId !== workspaceId) {
-      throw new Error('Security verification failed: Join request does not belong to the target workspace.');
     }
 
     if (decision === 'approved') {
-      if (reqData.status !== 'pending') {
-        throw new Error(`This request has already been ${reqData.status}.`);
-      }
-
-      // 2. Create/update workspaceMembers document with deterministic ID (${userId}_${workspaceId})
-      const memberDocId = `${targetUserId}_${workspaceId}`;
-      const memberDocRef = doc(db, 'workspaceMembers', memberDocId);
-      await setDoc(
-        memberDocRef,
-        {
-          workspaceId,
-          userId: targetUserId,
-          role: 'member',
-          status: 'active',
-          joinedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // 3. Update request status to 'approved'
-      await updateDoc(reqDocRef, {
-        status: 'approved',
-        approvedAt: serverTimestamp(),
-        approvedBy: currentUser.uid,
-        reviewedAt: serverTimestamp(),
-        reviewedBy: currentUser.uid,
+      await approveWorkspaceJoinRequest({
+        requestId,
+        workspaceId,
+        targetUserId,
+        adminUid: currentUserId,
+        inviteTokenOrId,
       });
-
-      // 4. Increment invite usedCount if token or inviteId was recorded
-      const inviteIdentifier =
-        inviteTokenOrId || reqData.inviteToken || reqData.inviteId;
-      if (inviteIdentifier) {
-        try {
-          const invitesRef = collection(db, 'workspaceInvites');
-          const tokenQ = query(invitesRef, where('token', '==', inviteIdentifier));
-          const tokenSnap = await getDocs(tokenQ);
-          if (!tokenSnap.empty) {
-            await updateDoc(tokenSnap.docs[0].ref, {
-              usedCount: increment(1),
-            });
-          } else {
-            const inviteDocRef = doc(db, 'workspaceInvites', inviteIdentifier);
-            const idSnap = await getDoc(inviteDocRef);
-            if (idSnap.exists()) {
-              await updateDoc(inviteDocRef, {
-                usedCount: increment(1),
-              });
-            }
-          }
-        } catch (inviteErr) {
-          console.warn('[UNSAID] Could not increment invite usedCount:', inviteErr);
-        }
-      }
-
-      // Refresh workspaces to immediately reflect in local list
       await loadWorkspaces();
       return true;
-    } else {
-      // Reject request
-      await updateDoc(reqDocRef, {
-        status: 'rejected',
-        rejectedAt: serverTimestamp(),
-        rejectedBy: currentUser.uid,
-        reviewedAt: serverTimestamp(),
-        reviewedBy: currentUser.uid,
+    } else if (decision === 'rejected') {
+      await rejectWorkspaceJoinRequest({
+        requestId,
+        workspaceId,
+        adminUid: currentUserId,
       });
       return true;
+    } else {
+      throw new Error('Invalid request decision.');
     }
   };
 
@@ -888,8 +829,8 @@ export const WorkspaceProvider = ({ children }) => {
     // 6. Update local state and cache
     const remaining = workspaces.filter((w) => w.id !== workspaceId);
     setWorkspaces(remaining);
-    try {
-      localStorage.setItem(WORKSPACES_CACHE_KEY, JSON.stringify(remaining));
+      try {
+        localStorage.setItem(workspacesCacheKeyFor(currentUserId), JSON.stringify(remaining));
     } catch {}
 
     setCurrentWorkspace((prev) => {
@@ -897,9 +838,9 @@ export const WorkspaceProvider = ({ children }) => {
         const nextWs = remaining[0] || null;
         try {
           if (nextWs) {
-            localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextWs.id);
+            localStorage.setItem(activeWorkspaceKeyFor(currentUserId), nextWs.id);
           } else {
-            localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+            localStorage.removeItem(activeWorkspaceKeyFor(currentUserId));
           }
         } catch {}
         return nextWs;
@@ -910,6 +851,105 @@ export const WorkspaceProvider = ({ children }) => {
     return true;
   };
 
+  // Derive user's membership and role in the currently selected workspace
+  const currentMembership = React.useMemo(() => {
+    if (!currentWorkspace?.id || !currentUserId) return null;
+    return (
+      memberships.find(
+        (m) => m.workspaceId === currentWorkspace.id && m.status === 'active'
+      ) || null
+    );
+  }, [currentWorkspace, currentUserId, memberships]);
+
+  const isCurrentWorkspaceAdmin = React.useMemo(() => {
+    if (!currentWorkspace || !currentUserId) return false;
+    // 1. Platform admin has superadmin access
+    if (isAdmin) return true;
+    // 2. Creator of the workspace
+    if (currentWorkspace.createdBy === currentUserId) return true;
+    // 3. Workspace member with admin role
+    if (currentMembership?.role === 'admin') return true;
+    return false;
+  }, [currentWorkspace, currentUserId, isAdmin, currentMembership]);
+
+  const isCurrentWorkspaceMember = React.useMemo(() => {
+    if (!currentWorkspace || !currentUserId) return false;
+    if (isCurrentWorkspaceAdmin) return true;
+    return Boolean(currentMembership && currentMembership.status === 'active');
+  }, [currentWorkspace, currentUserId, isCurrentWorkspaceAdmin, currentMembership]);
+
+  const currentWorkspaceRole = React.useMemo(() => {
+    if (isCurrentWorkspaceAdmin) return 'admin';
+    if (isCurrentWorkspaceMember) return 'member';
+    return null;
+  }, [isCurrentWorkspaceAdmin, isCurrentWorkspaceMember]);
+
+  const workspacePermissions = React.useMemo(
+    () => ({
+      // Workspace admin permissions:
+      canManageWorkspace: isCurrentWorkspaceAdmin,
+      canManageInvitations: isCurrentWorkspaceAdmin,
+      canApproveJoinRequests: isCurrentWorkspaceAdmin,
+      canManageProblems: isCurrentWorkspaceAdmin,
+      canSendOfficialResolution: isCurrentWorkspaceAdmin,
+      canModerateDiscussions: isCurrentWorkspaceAdmin,
+      canManagePolls: isCurrentWorkspaceAdmin,
+      canViewWorkspaceAnalytics: isCurrentWorkspaceAdmin,
+
+      // Workspace member permissions:
+      canSubmitProblems: isCurrentWorkspaceMember,
+      canViewWorkspaceProblems: isCurrentWorkspaceMember,
+      canParticipateInDiscussions: isCurrentWorkspaceMember,
+      canVoteInPolls: isCurrentWorkspaceMember,
+      canAcknowledgeResolutions: isCurrentWorkspaceMember,
+      canProvideFeedback: isCurrentWorkspaceMember,
+      canEscalateProblems: isCurrentWorkspaceMember,
+    }),
+    [isCurrentWorkspaceAdmin, isCurrentWorkspaceMember]
+  );
+
+  // Tag listener results with their workspace so switching never shows stale counts.
+  const [pendingRequestSnapshot, setPendingRequestSnapshot] = useState({
+    workspaceId: null,
+    requests: [],
+  });
+  const pendingRequests =
+    pendingRequestSnapshot.workspaceId === currentWorkspace?.id
+      ? pendingRequestSnapshot.requests
+      : [];
+
+  // Subscribe in real-time to pending requests whenever currentWorkspace changes and user has admin rights
+  useEffect(() => {
+    let isCancelled = false;
+    const wsId = currentWorkspace?.id;
+    setPendingRequestSnapshot({ workspaceId: wsId || null, requests: [] });
+
+    if (!wsId || !currentUserId || !isCurrentWorkspaceAdmin) {
+      return;
+    }
+
+    const unsubscribe = subscribeToPendingWorkspaceRequests(
+      wsId,
+      (reqs) => {
+        if (!isCancelled) {
+          setPendingRequestSnapshot({ workspaceId: wsId, requests: reqs });
+        }
+      },
+      (err) => {
+        if (!isCancelled) {
+          console.warn('[UNSAID Pending Requests Listener Error]', err);
+        }
+      }
+    );
+
+    return () => {
+      isCancelled = true;
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [currentWorkspace?.id, currentUserId, isCurrentWorkspaceAdmin]);
+
   const value = {
     workspaces,
     currentWorkspace,
@@ -917,6 +957,13 @@ export const WorkspaceProvider = ({ children }) => {
     selectedWorkspaceId: currentWorkspace?.id || null,
     availableWorkspaces: workspaces,
     memberships,
+    currentMembership,
+    isCurrentWorkspaceAdmin,
+    isCurrentWorkspaceMember,
+    currentWorkspaceRole,
+    workspacePermissions,
+    pendingRequests,
+    pendingRequestsCount: pendingRequests.length,
     loading,
     switchWorkspace,
     createWorkspace,
@@ -925,6 +972,7 @@ export const WorkspaceProvider = ({ children }) => {
     getWorkspaceInvites,
     revokeInvite,
     getInviteByToken,
+    acceptInviteAndJoinWorkspace,
     requestJoinWorkspace,
     getUserRequestForWorkspace,
     getWorkspaceRequests,

@@ -9,15 +9,20 @@ import { GlassLoader } from '../ui/GlassLoader';
  * Redirects unauthenticated visits to /login.
  */
 export const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isAdmin, loading, userProfile } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return <GlassLoader message="Verifying session..." />;
+  if (loading || (isAuthenticated && !userProfile)) {
+    return <GlassLoader message="Preparing your workspace..." />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/" state={{ from: location, reason: 'login_required' }} replace />;
+  }
+
+  // If authenticated admin attempts to open regular user /app feed, route to /admin
+  if (isAdmin && location.pathname === '/app') {
+    return <Navigate to="/admin" replace />;
   }
 
   return children;

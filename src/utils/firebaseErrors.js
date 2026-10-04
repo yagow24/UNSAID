@@ -23,10 +23,13 @@ export const getFriendlyAuthErrorMessage = (error) => {
       return `This domain ("${currentHost}") is not authorized for Firebase Authentication. If running locally, open http://localhost:5173 or add "${currentHost}" to Firebase Console > Authentication > Settings > Authorized domains.`;
 
     case 'auth/popup-closed-by-user':
-      return 'Google sign-in was canceled because the popup window was closed before completion.';
+      return 'Google verification was cancelled.';
 
     case 'auth/popup-blocked':
-      return 'The sign-in popup was blocked by your browser. Please allow popups for this site and click Continue with Google again.';
+      return 'Your browser blocked the Google verification popup. Please allow popups and try again.';
+
+    case 'auth/user-mismatch':
+      return 'The Google account used for verification does not match this account.';
 
     case 'auth/cancelled-popup-request':
       return 'Only one sign-in popup can be active at a time. The previous request was canceled.';
@@ -52,7 +55,7 @@ export const getFriendlyAuthErrorMessage = (error) => {
     case 'auth/wrong-password':
     case 'auth/user-not-found':
     case 'auth/invalid-credential':
-      return 'Incorrect email or password. If you registered via Google, please click "Continue with Google".';
+      return 'Incorrect email or password. Please check your credentials and try again.';
 
     case 'auth/user-disabled':
       return 'This account has been disabled. Please contact support.';

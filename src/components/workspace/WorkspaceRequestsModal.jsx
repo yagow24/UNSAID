@@ -13,6 +13,7 @@ import { useWorkspace } from '../../hooks/useWorkspace';
 import { ModalShell } from '../ui/ModalShell';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { subscribeToAllWorkspaceRequests } from '../../services/workspaceRequestService';
 
 export const WorkspaceRequestsModal = ({ isOpen, onClose, workspace }) => {
   const {
@@ -88,38 +89,41 @@ export const WorkspaceRequestsModal = ({ isOpen, onClose, workspace }) => {
     [selectedWorkspace?.id, getWorkspaceRequests]
   );
 
-  // When modal is open or target workspace changes, IMMEDIATELY clear previous requests and fetch new
+  // When modal is open or target workspace changes, listen in real-time
   useEffect(() => {
     let ignore = false;
     if (isOpen && selectedWorkspace?.id) {
-      // Clear old state asynchronously before fetch to prevent cross-workspace leak
       queueMicrotask(() => {
         if (!ignore) {
-          setRequests([]);
           setLoading(true);
           setError('');
         }
       });
 
-      getWorkspaceRequests(selectedWorkspace.id)
-        .then((data) => {
+      const unsubscribe = subscribeToAllWorkspaceRequests(
+        selectedWorkspace.id,
+        (data) => {
           if (!ignore) {
             setRequests(data);
-          }
-        })
-        .catch((err) => {
-          if (!ignore) {
-            console.error('[UNSAID Load Requests Error]', err);
-            setError('Failed to fetch pending requests.');
-          }
-        })
-        .finally(() => {
-          if (!ignore) {
             setLoading(false);
           }
-        });
+        },
+        (err) => {
+          if (!ignore) {
+            console.error('[UNSAID Load Requests Error]', err);
+            setError('Failed to fetch workspace requests.');
+            setLoading(false);
+          }
+        }
+      );
+
+      return () => {
+        ignore = true;
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
     } else if (!isOpen) {
-      // Clear state on modal close
       queueMicrotask(() => {
         if (!ignore) {
           setRequests([]);
@@ -128,11 +132,7 @@ export const WorkspaceRequestsModal = ({ isOpen, onClose, workspace }) => {
         }
       });
     }
-
-    return () => {
-      ignore = true;
-    };
-  }, [isOpen, selectedWorkspace?.id, getWorkspaceRequests]);
+  }, [isOpen, selectedWorkspace?.id]);
 
   const handleReview = async (request, decision) => {
     if (!selectedWorkspace?.id) return;
@@ -267,7 +267,7 @@ export const WorkspaceRequestsModal = ({ isOpen, onClose, workspace }) => {
         ) : requests.length === 0 ? (
           <div className="py-12 text-center text-xs text-[var(--text-muted)] space-y-1">
             <p className="font-semibold text-[var(--text)]">
-              No requests recorded for {selectedWorkspace?.name || 'this workspace'}
+              No pending join requests
             </p>
             <p>Generate an invite link to allow users to request access.</p>
           </div>

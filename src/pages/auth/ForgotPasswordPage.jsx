@@ -83,9 +83,9 @@ export const ForgotPasswordPage = () => {
                   Please check your spam folder if it doesn't appear shortly.
                 </p>
               </div>
-              <Link to="/login" className="block pt-2">
+              <Link to="/admin/signin" className="block pt-2">
                 <Button variant="secondary" size="md" fullWidth icon={<ArrowLeft className="w-4 h-4" />}>
-                  Return to Sign In
+                  Return to Admin Sign In
                 </Button>
               </Link>
             </div>
@@ -126,10 +126,10 @@ export const ForgotPasswordPage = () => {
 
               <div className="text-center pt-2">
                 <Link
-                  to="/login"
+                  to="/admin/signin"
                   className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)] font-medium"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Admin Sign In
                 </Link>
               </div>
             </form>

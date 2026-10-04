@@ -14,7 +14,14 @@ import { useAuth } from '../../hooks/useAuth';
  * Frosted glass dropdown allowing authorized users to switch between their approved workspaces.
  */
 export const WorkspaceSwitcher = ({ onOpenCreateModal, className = '' }) => {
-  const { workspaces, currentWorkspace, switchWorkspace, loading } = useWorkspace();
+  const {
+    workspaces,
+    currentWorkspace,
+    memberships,
+    currentWorkspaceRole,
+    switchWorkspace,
+    loading,
+  } = useWorkspace();
   const { isAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -74,9 +81,15 @@ export const WorkspaceSwitcher = ({ onOpenCreateModal, className = '' }) => {
           <span className="text-xs font-bold truncate leading-tight text-[var(--text)]">
             {currentWorkspace ? currentWorkspace.name : loading ? 'Loading...' : 'No Approved Workspaces'}
           </span>
-          {currentWorkspace?.domain && (
-            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-[var(--cyan-light)] text-[var(--cyan)] shrink-0 hidden sm:inline-block">
-              {currentWorkspace.domain}
+          {currentWorkspaceRole && (
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider shrink-0 hidden sm:inline-block ${
+                currentWorkspaceRole === 'admin'
+                  ? 'bg-[var(--cyan-light)] text-[var(--cyan)]'
+                  : 'bg-[var(--surface-active)] text-[var(--text-secondary)]'
+              }`}
+            >
+              {currentWorkspaceRole}
             </span>
           )}
         </div>
@@ -121,6 +134,12 @@ export const WorkspaceSwitcher = ({ onOpenCreateModal, className = '' }) => {
             ) : (
               workspaces.map((ws) => {
                 const isSelected = currentWorkspace?.id === ws.id;
+                const memberRecord = memberships.find((m) => m.workspaceId === ws.id);
+                const roleInWs =
+                  ws.userRole ||
+                  memberRecord?.role ||
+                  (isAdmin ? 'admin' : 'member');
+
                 return (
                   <button
                     key={ws.id}
@@ -141,8 +160,19 @@ export const WorkspaceSwitcher = ({ onOpenCreateModal, className = '' }) => {
                         <div className="text-xs font-bold truncate leading-tight text-[var(--text)]">
                           {ws.name}
                         </div>
-                        <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider font-medium mt-0.5">
-                          {ws.domain || 'Organization'}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider font-medium">
+                            {ws.domain || 'Organization'}
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                              roleInWs === 'admin'
+                                ? 'bg-[var(--cyan-light)] text-[var(--cyan)]'
+                                : 'bg-[var(--surface-active)] text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            {roleInWs}
+                          </span>
                         </div>
                       </div>
                     </div>

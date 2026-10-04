@@ -1,0 +1,19 @@
+{
+  "name": "UNSAID — Intelligent Query Resolution & Escalation",
+  "short_name": "UNSAID",
+  "description": "Intelligent, multimodal query resolution and escalation platform.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0f19",
+  "theme_color": "#0b0f19",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

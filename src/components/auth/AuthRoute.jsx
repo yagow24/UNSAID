@@ -9,10 +9,10 @@ import { GlassLoader } from '../ui/GlassLoader';
  * If the user is already authenticated, redirects them straight to their authorized home.
  */
 export const AuthRoute = ({ children }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+  const { isAuthenticated, isAdmin, loading, userProfile } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  if (loading || (isAuthenticated && !userProfile)) {
     return <GlassLoader message="Checking authentication status..." />;
   }
 

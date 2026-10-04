@@ -1,29 +1,24 @@
 /**
  * Admin Security Configuration
  * 
- * IMPORTANT SECURITY RULES:
- * 1. Selecting "Admin" on the signup UI DOES NOT grant administrator privileges.
- * 2. Admin authorization MUST be validated against the authorized email allowlist / Firestore verified role.
- * 3. Never trust client-submitted role fields or localStorage values.
- * 4. In Part 5, the Flask backend + Firebase Admin SDK will perform strict server-side claims enforcement.
+ * ARCHITECTURE RULES:
+ * 1. Public Authentication Context (/signup, public Google) creates ADMIN accounts.
+ * 2. Invitation Authentication Context (/join/:inviteToken) creates USER accounts.
+ * 3. Role authorization is strictly determined by authentication context on creation
+ *    and persisted in Cloud Firestore (users/{uid}.role).
+ * 4. Never determine admin privileges using hardcoded email strings or email allowlists.
  */
-
-// Authorized Admin Email Allowlist
-// Users with these verified emails will receive the verified 'admin' role in their Firestore profile.
-export const AUTHORIZED_ADMIN_EMAILS = [
-  'admin@unsaid.org',
-  'lead@unsaid.org',
-  'admin@unsaid.platform',
-  'sriyagowraj201@gmail.com',
-];
-
 
 /**
- * Validates whether an email is permitted to assume administrative privileges.
- * @param {string} email
+ * Validates whether a user profile has administrator privileges based on persisted Firestore role.
+ * @param {object} userProfile
  * @returns {boolean}
  */
-export const isAuthorizedAdminEmail = (email) => {
-  if (!email || typeof email !== 'string') return false;
-  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+export const isVerifiedAdmin = (userProfile) => {
+  return Boolean(userProfile && userProfile.role === 'admin');
 };
+
+// Deprecated: Maintained as dummy export for any backward compatibility imports
+export const AUTHORIZED_ADMIN_EMAILS = [];
+export const isAuthorizedAdminEmail = () => false;
+

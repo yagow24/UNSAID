@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../../hooks/useAuth';
+import { useWorkspace } from '../../hooks/useWorkspace';
 
 /**
  * BottomNavigation Component
@@ -22,16 +23,22 @@ import { useAuth } from '../../hooks/useAuth';
  * - Inactive and unclickable when any modal dialog is open
  */
 export const BottomNavigation = ({ onHoldAction }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin: isPlatformAdmin } = useAuth();
+  const { isCurrentWorkspaceAdmin } = useWorkspace();
+  const isAdmin = isPlatformAdmin || isCurrentWorkspaceAdmin;
   const navigate = useNavigate();
   const location = useLocation();
 
   // Strict route boundary: Do NOT render bottom navigation on public auth or join pages
   const isAuthOrJoin =
+    location.pathname === '/' ||
     location.pathname === '/login' ||
     location.pathname === '/signin' ||
     location.pathname === '/signup' ||
     location.pathname === '/forgot-password' ||
+    location.pathname.startsWith('/admin/signin') ||
+    location.pathname.startsWith('/admin/signup') ||
+    location.pathname.startsWith('/admin/login') ||
     location.pathname.startsWith('/join');
 
   // Hold State Management

@@ -21,12 +21,16 @@ export const AppShell = ({ children }) => {
   const location = useLocation();
   const { isAuthenticated } = useAuth();
 
-  // Strict check for public authentication or token join flows
+  // Strict check for public authentication, gateway, or token join flows
   const isAuthOrJoinPage =
+    location.pathname === '/' ||
     location.pathname === '/login' ||
     location.pathname === '/signin' ||
     location.pathname === '/signup' ||
     location.pathname === '/forgot-password' ||
+    location.pathname.startsWith('/admin/signin') ||
+    location.pathname.startsWith('/admin/signup') ||
+    location.pathname.startsWith('/admin/login') ||
     location.pathname.startsWith('/join');
 
   return (

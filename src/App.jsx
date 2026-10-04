@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { WorkspaceProvider } from './context/WorkspaceContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { AppShell } from './components/layout/AppShell';
 
 // Route Guards
@@ -11,9 +12,8 @@ import { AdminRoute } from './components/auth/AdminRoute';
 import { AuthRoute } from './components/auth/AuthRoute';
 
 // Pages
-import { LandingPreview } from './pages/LandingPreview';
-import { SignInPage } from './pages/auth/SignInPage';
-import { SignUpPage } from './pages/auth/SignUpPage';
+import { AdminSignInPage } from './pages/auth/AdminSignInPage';
+import { AdminSignUpPage } from './pages/auth/AdminSignUpPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { UserDashboardShell } from './pages/UserDashboardShell';
 import { AdminDashboardShell } from './pages/AdminDashboardShell';
@@ -28,18 +28,15 @@ export function App() {
       <ThemeProvider>
         <AuthProvider>
           <WorkspaceProvider>
-            <AppShell>
+            <NotificationProvider>
+              <AppShell>
               <Routes>
-                {/* Public Marketing & Demo Views */}
-                <Route path="/" element={<LandingPreview />} />
-                <Route path="/showcase" element={<ComponentShowcase />} />
-
-                {/* Authentication Routes (redirect to app/admin if already logged in) */}
+                {/* Public Application Entry: Admin Authentication & Showcase */}
                 <Route
-                  path="/login"
+                  path="/"
                   element={
                     <AuthRoute>
-                      <SignInPage />
+                      <AdminSignInPage />
                     </AuthRoute>
                   }
                 />
@@ -47,7 +44,15 @@ export function App() {
                   path="/signin"
                   element={
                     <AuthRoute>
-                      <SignInPage />
+                      <AdminSignInPage />
+                    </AuthRoute>
+                  }
+                />
+                <Route
+                  path="/login"
+                  element={
+                    <AuthRoute>
+                      <AdminSignInPage />
                     </AuthRoute>
                   }
                 />
@@ -55,8 +60,65 @@ export function App() {
                   path="/signup"
                   element={
                     <AuthRoute>
-                      <SignUpPage />
+                      <AdminSignUpPage />
                     </AuthRoute>
+                  }
+                />
+                <Route path="/showcase" element={<ComponentShowcase />} />
+
+                {/* Explicit Admin Authentication Routes (Aliases) */}
+                <Route
+                  path="/admin/signin"
+                  element={
+                    <AuthRoute>
+                      <AdminSignInPage />
+                    </AuthRoute>
+                  }
+                />
+                <Route
+                  path="/admin/login"
+                  element={
+                    <AuthRoute>
+                      <AdminSignInPage />
+                    </AuthRoute>
+                  }
+                />
+                <Route
+                  path="/admin/signup"
+                  element={
+                    <AuthRoute>
+                      <AdminSignUpPage />
+                    </AuthRoute>
+                  }
+                />
+
+                {/* Direct User Auth Routes Blocked -> Strictly Redirect to Public Gateway */}
+                <Route
+                  path="/user/*"
+                  element={
+                    <Navigate
+                      to="/"
+                      state={{
+                        reason: 'invite_required',
+                        message:
+                          'User accounts are created through workspace invitations. Please open the invitation link provided by your workspace administrator.',
+                      }}
+                      replace
+                    />
+                  }
+                />
+                <Route
+                  path="/app/signup"
+                  element={
+                    <Navigate
+                      to="/"
+                      state={{
+                        reason: 'invite_required',
+                        message:
+                          'User accounts are created through workspace invitations. Please open the invitation link provided by your workspace administrator.',
+                      }}
+                      replace
+                    />
                   }
                 />
                 <Route
@@ -68,7 +130,7 @@ export function App() {
                   }
                 />
 
-                {/* Join Workspace Request Flow (accessible public or authenticated) */}
+                {/* Workspace Invitation Flow (Public/Auth via valid invite token) */}
                 <Route path="/join/:token" element={<JoinWorkspacePage />} />
                 <Route path="/join/:inviteToken" element={<JoinWorkspacePage />} />
 
@@ -107,13 +169,22 @@ export function App() {
                     </AdminRoute>
                   }
                 />
+                <Route
+                  path="/admin/*"
+                  element={
+                    <AdminRoute>
+                      <AdminDashboardShell />
+                    </AdminRoute>
+                  }
+                />
 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </AppShell>
-          </WorkspaceProvider>
-        </AuthProvider>
+          </NotificationProvider>
+        </WorkspaceProvider>
+      </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

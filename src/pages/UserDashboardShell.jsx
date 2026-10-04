@@ -9,10 +9,12 @@ import {
   History,
   RefreshCw,
   Building2,
+  XCircle,
 } from 'lucide-react';
 
 import { useAuth } from '../hooks/useAuth';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useNotifications } from '../hooks/useNotifications';
 
 import { PageContainer } from '../components/layout/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
@@ -25,13 +27,15 @@ import { DailyCheckInWidget } from '../components/checkin/DailyCheckInWidget';
 import { ProblemFeed } from '../components/problem/ProblemFeed';
 import { SubmitProblemModal } from '../components/problem/SubmitProblemModal';
 import { WorkspaceHistoryModal } from '../components/history/WorkspaceHistoryModal';
+import { OfflineBanner } from '../components/common/OfflineBanner';
 import { getShiftStatus } from '../config/shiftConfig';
 import { getWorkspaceProblems, subscribeToWorkspaceProblems } from '../services/problemService';
 import { syncDailySnapshotFromMetrics } from '../services/historyService';
 
 export const UserDashboardShell = () => {
   const { userProfile, currentUser } = useAuth();
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, switchWorkspace } = useWorkspace();
+  const { notifications, markAsRead } = useNotifications();
 
   const [problems, setProblems] = useState([]);
   const [loadingProblems, setLoadingProblems] = useState(false);
@@ -130,8 +134,16 @@ export const UserDashboardShell = () => {
     setProblems((prev) => [newProblem, ...prev]);
   };
 
+  const latestRequestNotif = useMemo(() => {
+    return notifications.find(
+      (n) => !n.read && (n.type === 'request_approved' || n.type === 'request_rejected')
+    );
+  }, [notifications]);
+
   return (
-    <PageContainer size="lg" className="space-y-8">
+    <>
+      <OfflineBanner />
+      <PageContainer size="lg" className="space-y-8">
       {/* 1. Header with dynamic workspace context and Live Clock */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -180,6 +192,69 @@ export const UserDashboardShell = () => {
             }
           />
         </div>
+
+        {/* Real-time Workspace Join Request Notification Banner */}
+        {latestRequestNotif && (
+          <div
+            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg transition-all ${
+              latestRequestNotif.type === 'request_approved'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-xl mt-0.5 ${
+                latestRequestNotif.type === 'request_approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+              }`}>
+                {latestRequestNotif.type === 'request_approved' ? (
+                  <CheckCircle className="w-5 h-5" />
+                ) : (
+                  <XCircle className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <div className="font-semibold text-sm text-[var(--text)] flex items-center gap-2">
+                  <span>{latestRequestNotif.title}</span>
+                  <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
+                    latestRequestNotif.type === 'request_approved'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-500/20 text-rose-400'
+                  }`}>
+                    {latestRequestNotif.type === 'request_approved' ? 'Approved' : 'Declined'}
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">{latestRequestNotif.message}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              {latestRequestNotif.type === 'request_approved' && latestRequestNotif.workspaceId && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    await markAsRead(latestRequestNotif.id);
+                    if (switchWorkspace) {
+                      await switchWorkspace(latestRequestNotif.workspaceId);
+                    }
+                  }}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold py-1.5 px-3 rounded-lg"
+                >
+                  Switch to Workspace
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => markAsRead(latestRequestNotif.id)}
+                className="text-xs text-[var(--text-muted)] hover:text-white"
+                title="Dismiss notification"
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Live Clock & Shift Lifecycle Bar */}
         <div className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs">
@@ -344,5 +419,6 @@ export const UserDashboardShell = () => {
         workspace={currentWorkspace}
       />
     </PageContainer>
+    </>
   );
 };

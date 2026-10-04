@@ -25,7 +25,15 @@ import { ModalShell } from '../../components/ui/ModalShell';
 import { getFriendlyFirestoreErrorMessage, getFriendlyAuthErrorMessage } from '../../utils/firebaseErrors';
 
 export const AccountPage = () => {
-  const { currentUser, userProfile, isAdmin, signOut, updateProfileData, deleteAccount } = useAuth();
+  const {
+    currentUser,
+    userProfile,
+    isAdmin,
+    signOut,
+    updateProfileData,
+    deleteAccount,
+    reauthenticateWithGoogle,
+  } = useAuth();
   const { currentWorkspace, workspaces } = useWorkspace();
   const navigate = useNavigate();
 
@@ -78,16 +86,75 @@ export const AccountPage = () => {
     }
   };
 
-  // Delete Account States
+  // Delete Account States & Provider Detection
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [reauthPassword, setReauthPassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isVerifyingGoogle, setIsVerifyingGoogle] = useState(false);
+  const [isGoogleVerified, setIsGoogleVerified] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  const isPasswordAccount = currentUser?.providerData?.some((p) => p.providerId === 'password');
-  const isGoogleAccount = currentUser?.providerData?.some((p) => p.providerId === 'google.com');
+  // Robust provider detection checking all providerData entries
+  const hasPasswordProvider = currentUser?.providerData?.some((p) => p.providerId === 'password');
+  const hasGoogleProvider = currentUser?.providerData?.some((p) => p.providerId === 'google.com');
 
+  // If user has Google and not password -> Google flow; if password exists -> password flow
+  const isGoogleAccount = hasGoogleProvider && !hasPasswordProvider;
+  const isPasswordAccount = hasPasswordProvider || !hasGoogleProvider;
+
+  // Execute deletion helper
+  const executeDelete = async (options) => {
+    setDeleteError('');
+    setIsDeleting(true);
+    try {
+      await deleteAccount(options);
+      navigate('/', { replace: true });
+    } catch (err) {
+      console.error('[UNSAID Delete Account Error]', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setDeleteError('Google verification was cancelled.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setDeleteError('Your browser blocked the Google verification popup. Please allow popups and try again.');
+      } else if (err.code === 'auth/user-mismatch') {
+        setDeleteError('The Google account used for verification does not match this account.');
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setDeleteError('Incorrect password. Please verify your current account password.');
+      } else {
+        setDeleteError(getFriendlyAuthErrorMessage(err));
+      }
+      setIsDeleting(false);
+    }
+  };
+
+  // Google Re-authentication Handler
+  const handleGoogleVerify = async () => {
+    setDeleteError('');
+    setIsVerifyingGoogle(true);
+    try {
+      await reauthenticateWithGoogle();
+      setIsGoogleVerified(true);
+      // If user has already entered DELETE confirmation, perform immediate deletion
+      if (deleteConfirmText.trim() === 'DELETE') {
+        await executeDelete({ isGoogleReauthenticated: true });
+      }
+    } catch (err) {
+      console.error('[UNSAID Google Reauth Error]', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setDeleteError('Google verification was cancelled.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setDeleteError('Your browser blocked the Google verification popup. Please allow popups and try again.');
+      } else if (err.code === 'auth/user-mismatch') {
+        setDeleteError('The Google account used for verification does not match this account.');
+      } else {
+        setDeleteError(getFriendlyAuthErrorMessage(err));
+      }
+    } finally {
+      setIsVerifyingGoogle(false);
+    }
+  };
+
+  // Delete Account Confirmation Click
   const handleDeleteAccount = async () => {
     if (deleteConfirmText.trim() !== 'DELETE') {
       setDeleteError('Please type DELETE exactly to confirm.');
@@ -97,18 +164,15 @@ export const AccountPage = () => {
       setDeleteError('Please enter your account password to verify your identity.');
       return;
     }
-
-    setDeleteError('');
-    setIsDeleting(true);
-
-    try {
-      await deleteAccount({ password: reauthPassword });
-      navigate('/login', { replace: true });
-    } catch (err) {
-      console.error('[UNSAID Delete Account Error]', err);
-      setDeleteError(getFriendlyAuthErrorMessage(err));
-      setIsDeleting(false);
+    if (isGoogleAccount && !isGoogleVerified) {
+      setDeleteError('Please continue with Google to verify your identity before deleting your account.');
+      return;
     }
+
+    await executeDelete({
+      password: reauthPassword,
+      isGoogleReauthenticated: isGoogleVerified,
+    });
   };
 
   const handleSignOut = async () => {
@@ -380,11 +444,12 @@ export const AccountPage = () => {
       <ModalShell
         isOpen={isDeleteModalOpen}
         onClose={() => {
-          if (!isDeleting) {
+          if (!isDeleting && !isVerifyingGoogle) {
             setIsDeleteModalOpen(false);
             setDeleteError('');
             setDeleteConfirmText('');
             setReauthPassword('');
+            setIsGoogleVerified(false);
           }
         }}
         title="Delete Account"
@@ -396,8 +461,14 @@ export const AccountPage = () => {
               type="button"
               variant="secondary"
               size="sm"
-              disabled={isDeleting}
-              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={isDeleting || isVerifyingGoogle}
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setDeleteError('');
+                setDeleteConfirmText('');
+                setReauthPassword('');
+                setIsGoogleVerified(false);
+              }}
             >
               Cancel
             </Button>
@@ -405,7 +476,13 @@ export const AccountPage = () => {
               type="button"
               variant="danger"
               size="sm"
-              disabled={deleteConfirmText.trim() !== 'DELETE' || isDeleting}
+              disabled={
+                deleteConfirmText.trim() !== 'DELETE' ||
+                (isPasswordAccount && !reauthPassword) ||
+                (isGoogleAccount && !isGoogleVerified) ||
+                isDeleting ||
+                isVerifyingGoogle
+              }
               isLoading={isDeleting}
               onClick={handleDeleteAccount}
               icon={<Trash2 className="w-4 h-4" />}
@@ -427,12 +504,13 @@ export const AccountPage = () => {
           </div>
 
           {deleteError && (
-            <div className="p-3 rounded-xl bg-[var(--danger-light)] border border-[var(--danger)]/30 text-xs text-[var(--danger)] flex items-center gap-2">
+            <div className="p-3 rounded-xl bg-[var(--danger-light)] border border-[var(--danger)]/30 text-xs text-[var(--danger)] flex items-center gap-2 animate-fade-in">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{deleteError}</span>
             </div>
           )}
 
+          {/* Password Authentication Verification (Shown ONLY for Password Accounts) */}
           {isPasswordAccount && (
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-[var(--text-secondary)]">
@@ -446,7 +524,7 @@ export const AccountPage = () => {
                   if (deleteError) setDeleteError('');
                 }}
                 placeholder="Enter your current password"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
               />
               <p className="text-[10px] text-[var(--text-muted)]">
                 Required by Firebase Authentication to verify your identity.
@@ -454,10 +532,55 @@ export const AccountPage = () => {
             </div>
           )}
 
+          {/* Google Authentication Verification (Shown ONLY for Google Accounts) */}
           {isGoogleAccount && (
-            <div className="p-3 rounded-xl bg-[var(--surface-hover)] border border-[var(--glass-border)] text-xs text-[var(--text-muted)] flex items-center gap-2">
-              <Shield className="w-4 h-4 text-[var(--cyan)] shrink-0" />
-              <span>You signed in via Google. A Google verification popup may appear to confirm your identity.</span>
+            <div className="space-y-3 p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text)]">
+                <Shield className="w-4 h-4 text-[var(--cyan)]" />
+                <span>Google Account</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                This account is connected with Google. Continue with Google to verify your identity before permanently deleting your account.
+              </p>
+
+              {isGoogleVerified ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[var(--success-light)] border border-[var(--success)]/30 text-xs text-[var(--success)] font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Identity verified with Google ({currentUser?.email})</span>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  fullWidth
+                  isLoading={isVerifyingGoogle}
+                  disabled={isDeleting}
+                  onClick={handleGoogleVerify}
+                  icon={
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.97 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                      />
+                    </svg>
+                  }
+                >
+                  Continue with Google
+                </Button>
+              )}
             </div>
           )}
 
@@ -473,7 +596,7 @@ export const AccountPage = () => {
                 if (deleteError) setDeleteError('');
               }}
               placeholder="DELETE"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs font-mono text-[var(--text)] focus:outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs font-mono text-[var(--text)] focus:outline-none focus:border-[var(--danger)]"
             />
           </div>
         </div>
