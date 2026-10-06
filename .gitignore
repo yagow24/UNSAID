@@ -60,3 +60,4 @@ __MACOSX/
 *.sln
 *.sw?
 *~
+node_modules
