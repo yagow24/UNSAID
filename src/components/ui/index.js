@@ -7,3 +7,4 @@ export { Avatar } from './Avatar';
 export { SectionHeader } from './SectionHeader';
 export { ModalShell } from './ModalShell';
 export { LiquidButton } from './LiquidButton';
+export { UnsaidLogoMark } from './UnsaidLogoMark';

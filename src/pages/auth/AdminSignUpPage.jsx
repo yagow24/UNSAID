@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   ArrowRight,
   AlertCircle,
-  Sparkles,
   Link as LinkIcon,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -17,6 +16,7 @@ import { useWorkspace } from '../../hooks/useWorkspace';
 import { GlassCard } from '../../components/ui/GlassCard';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { UnsaidLogoMark } from '../../components/ui/UnsaidLogoMark';
 import { getFriendlyAuthErrorMessage } from '../../utils/firebaseErrors';
 import { APP_CONFIG } from '../../config/appConfig';
 
@@ -156,8 +156,8 @@ export const AdminSignUpPage = () => {
             to="/"
             className="inline-flex items-center gap-2.5 group transition-transform hover:scale-105"
           >
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--primary)] via-[#8b5cf6] to-[var(--cyan)] flex items-center justify-center text-white shadow-lg">
-              <Sparkles className="w-5 h-5 text-white animate-pulse" />
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg overflow-hidden">
+              <UnsaidLogoMark className="w-full h-full" showShadow={false} />
             </div>
             <span className="text-2xl font-bold tracking-tight text-[var(--text)]">
               {APP_CONFIG.name}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Sparkles, Bell, LogOut } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
+import { UnsaidLogoMark } from '../ui/UnsaidLogoMark';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { Avatar } from '../ui/Avatar';
 import { IconButton } from '../ui/IconButton';
@@ -59,9 +60,9 @@ export const Header = ({ onOpenNotifications }) => {
             className="flex items-center gap-2.5 group select-none cursor-pointer"
           >
             {/* Logo Mark */}
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-[var(--primary)] via-[#8b5cf6] to-[var(--cyan)] flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform duration-200">
-              <Sparkles className="w-5 h-5 text-white animate-pulse" />
-              <span className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200 overflow-hidden">
+              <UnsaidLogoMark className="w-full h-full" showShadow={false} />
+              <span className="absolute inset-0 rounded-xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             </div>
 
             {/* Title */}
