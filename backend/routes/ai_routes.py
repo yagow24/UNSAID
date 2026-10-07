@@ -3,6 +3,7 @@ UNSAID AI REST Routes
 Handles authenticated, workspace-isolated requests to Gemini AI.
 """
 
+import os
 import logging
 from flask import Blueprint, request, jsonify, g
 from backend.config import get_gemini_model, is_gemini_configured
@@ -23,11 +24,18 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/api/ai")
 @ai_bp.route("/status", methods=["GET"])
 def get_status():
     """Returns AI health and model configuration status."""
+    configured = is_gemini_configured()
+    # List names of matching environment variables for diagnosis (never expose values)
+    detected_keys = [
+        k for k in os.environ.keys()
+        if any(term in k.upper() for term in ["GEMINI", "FIREBASE", "VERCEL"])
+    ]
     return jsonify({
         "success": True,
         "status": "online",
-        "aiConfigured": is_gemini_configured(),
+        "aiConfigured": configured,
         "model": get_gemini_model(),
+        "envDetected": detected_keys,
     })
 
 @ai_bp.route("/test-connection", methods=["POST"])
