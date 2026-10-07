@@ -31,7 +31,15 @@ reload_env()
 def get_gemini_api_key() -> str:
     """Dynamically retrieves GEMINI_API_KEY, reloading .env if modified."""
     reload_env()
-    return os.getenv("GEMINI_API_KEY", "").strip()
+    key = (
+        os.getenv("GEMINI_API_KEY", "")
+        or os.getenv("VITE_GEMINI_API_KEY", "")
+        or os.getenv("GOOGLE_API_KEY", "")
+        or os.getenv("GEMINI_KEY", "")
+    ).strip()
+    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
+        key = key[1:-1].strip()
+    return key
 
 def get_gemini_model() -> str:
     """Dynamically retrieves GEMINI_MODEL, defaulting to gemini-2.5-flash-lite."""
