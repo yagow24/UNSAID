@@ -211,8 +211,10 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isAdmin() ||
         isWorkspaceAdmin(resource.data.workspaceId) ||
-        ((isOwner(resource.data.authorId) || (('createdBy' in resource.data) && isOwner(resource.data.createdBy))) &&
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workspaceId', 'authorId', 'createdBy'])) ||
+        ((((('authorId' in resource.data) && isOwner(resource.data.authorId)) ||
+           (('createdBy' in resource.data) && isOwner(resource.data.createdBy)) ||
+           (('authorEmail' in resource.data) && resource.data.authorEmail != '' && resource.data.authorEmail == request.auth.token.email))) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['workspaceId', 'authorId', 'createdBy'])) ||
         // Community interaction: members can update upvotes, acknowledgements, escalation votes, quality feedback, recurrence, and read state
         (isWorkspaceMember(resource.data.workspaceId) &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -225,9 +227,13 @@ service cloud.firestore {
            'readByAdmin', 'readByUser'
          ]))
       );
-      allow delete: if isWorkspaceAdmin(resource.data.workspaceId) ||
-        isOwner(resource.data.authorId) ||
-        (('createdBy' in resource.data) && isOwner(resource.data.createdBy));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceAdmin(resource.data.workspaceId) ||
+        (('authorId' in resource.data) && isOwner(resource.data.authorId)) ||
+        (('createdBy' in resource.data) && isOwner(resource.data.createdBy)) ||
+        (('authorEmail' in resource.data) && resource.data.authorEmail != '' && resource.data.authorEmail == request.auth.token.email)
+      );
 
       // Two-way messaging subcollection
       match /messages/{messageId} {
