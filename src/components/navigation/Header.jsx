@@ -60,9 +60,8 @@ export const Header = ({ onOpenNotifications }) => {
             className="flex items-center gap-2.5 group select-none cursor-pointer"
           >
             {/* Logo Mark */}
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200 overflow-hidden">
-              <UnsaidLogoMark className="w-full h-full" showShadow={false} />
-              <span className="absolute inset-0 rounded-xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+              <UnsaidLogoMark className="w-full h-full" showShadow />
             </div>
 
             {/* Title */}

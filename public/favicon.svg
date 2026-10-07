@@ -21,111 +21,188 @@
     </linearGradient>
 
     <style>
-      @keyframes unsaid-pet-dance-body {
-        0% { transform: translateY(0) rotate(0deg) scale(1); }
-        6% { transform: translateY(-7px) rotate(-4.5deg) scale(1.02); }
-        12% { transform: translateY(2px) rotate(-1deg) scale(1.01, 0.98); }
-        18% { transform: translateY(-7px) rotate(4.5deg) scale(1.02); }
-        24% { transform: translateY(2px) rotate(1deg) scale(1.01, 0.98); }
-        30% { transform: translateY(-4px) rotate(-3deg); }
-        34% { transform: translateY(-4px) rotate(3deg); }
-        38% { transform: translateY(-4px) rotate(-2deg); }
-        42% { transform: translateY(1px) rotate(0deg); }
-        48% { transform: translateY(-12px) rotate(0deg) scale(1.05); }
-        54% { transform: translateY(-14px) rotate(-1.5deg) scale(1.06); }
-        60% { transform: translateY(-10px) rotate(1.5deg) scale(1.05); }
-        66% { transform: translateY(3px) rotate(0deg) scale(1.02, 0.96); }
-        72% { transform: translateY(-2px) scale(1.01); }
-        76% { transform: translateY(0) scale(1); }
-        84% { transform: translateY(-2px) rotate(0.5deg); }
-        90% { transform: translateY(1px) scale(0.99, 1.01); }
-        96% { transform: translateY(-1px) rotate(-0.5deg); }
-        100% { transform: translateY(0) rotate(0deg) scale(1); }
+      /* 1. BODY: Rhythmic pet dance groove + energetic dynamic HIGH JUMP */
+      @keyframes unsaid-pet-jump-dance {
+        /* Phase 1: Rhythmic Pet Dancing Groove (0% - 28%) */
+        0% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
+        7% {
+          transform: translateY(-8px) rotate(-4.5deg) scale(1.02, 1.01);
+        }
+        14% {
+          transform: translateY(3px) rotate(-1deg) scale(1.03, 0.97);
+        }
+        21% {
+          transform: translateY(-8px) rotate(4.5deg) scale(1.02, 1.01);
+        }
+        28% {
+          transform: translateY(3px) rotate(1deg) scale(1.03, 0.97);
+        }
+
+        /* Phase 2: Crouch / Wind-up Squash before the big jump (32%) */
+        32% {
+          transform: translateY(7px) rotate(0deg) scale(1.1, 0.88);
+        }
+
+        /* Phase 3: HIGH JUMP Rocket launch & stretch (36%) */
+        36% {
+          transform: translateY(-34px) rotate(-1deg) scale(0.92, 1.14);
+        }
+
+        /* Phase 4: Floating in the air with joyful dance tilt (42% - 48%) */
+        42% {
+          transform: translateY(-46px) rotate(-3.5deg) scale(1.08, 1.05);
+        }
+        48% {
+          transform: translateY(-44px) rotate(3.5deg) scale(1.08, 1.05);
+        }
+
+        /* Phase 5: Falling descent (53%) */
+        53% {
+          transform: translateY(-16px) rotate(0.5deg) scale(0.95, 1.08);
+        }
+
+        /* Phase 6: Landing cushion impact squash (57%) */
+        57% {
+          transform: translateY(8px) rotate(0deg) scale(1.1, 0.9);
+        }
+
+        /* Phase 7: Rebound hop (63%) */
+        63% {
+          transform: translateY(-6px) rotate(-1deg) scale(1.02, 1.02);
+        }
+
+        /* Phase 8: Playful victory shimmy (70% - 84%) */
+        70% {
+          transform: translateY(1px) rotate(2deg) scale(1);
+        }
+        77% {
+          transform: translateY(-3px) rotate(-2deg) scale(1.01);
+        }
+        84% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
+
+        /* Phase 9: Calm pet breathing rest (92% - 100%) */
+        92% {
+          transform: translateY(-2px) scale(1.01, 1.02);
+        }
+        100% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
       }
 
+      /* 2. EYES: Anticipation -> Mid-air Squint (^ ^) -> Rest Blink */
       @keyframes unsaid-pet-eyes {
-        0%, 44% { transform: scaleY(1) translateY(0); }
-        48% { transform: scaleY(0.35) translateY(-8px); }
-        54% { transform: scaleY(0.28) translateY(-10px); }
-        60% { transform: scaleY(0.35) translateY(-8px); }
-        66% { transform: scaleY(1) translateY(0); }
-        84% { transform: scaleY(1); }
-        88% { transform: scaleY(0.08); }
-        91% { transform: scaleY(1); }
-        93% { transform: scaleY(0.22); }
-        95% { transform: scaleY(1.04); }
-        98%, 100% { transform: scaleY(1); }
+        0%, 30% {
+          transform: scaleY(1) translateY(0);
+        }
+        34% {
+          transform: scaleY(1.15) translateY(2px);
+        }
+        38% {
+          transform: scaleY(0.4) translateY(-6px);
+        }
+        43%, 49% {
+          transform: scaleY(0.24) translateY(-10px);
+        }
+        53% {
+          transform: scaleY(0.45) translateY(-4px);
+        }
+        57% {
+          transform: scaleY(0.9) translateY(2px);
+        }
+        63%, 84% {
+          transform: scaleY(1) translateY(0);
+        }
+        88% {
+          transform: scaleY(0.08);
+        }
+        91% {
+          transform: scaleY(1);
+        }
+        93% {
+          transform: scaleY(0.2);
+        }
+        95% {
+          transform: scaleY(1.04);
+        }
+        98%, 100% {
+          transform: scaleY(1);
+        }
       }
 
+      /* 3. MOUTH: Transforms into a BIG CHEERFUL SMILE during the high jump! */
       @keyframes unsaid-pet-mouth-neutral {
-        0%, 44% { opacity: 1; transform: scale(1); }
-        47%, 65% { opacity: 0; transform: scale(0.6) translateY(-5px); }
-        68%, 100% { opacity: 1; transform: scale(1); }
+        0%, 35% { opacity: 1; transform: scale(1); }
+        38%, 54% { opacity: 0; transform: scale(0.5) translateY(-8px); }
+        57%, 100% { opacity: 1; transform: scale(1); }
       }
 
       @keyframes unsaid-pet-mouth-smile {
-        0%, 45% { opacity: 0; transform: scale(0.6) translateY(8px); }
-        48% { opacity: 1; transform: scale(1) translateY(0); }
-        54% { opacity: 1; transform: scale(1.08) translateY(-2px); }
-        62% { opacity: 1; transform: scale(1.04) translateY(-1px); }
-        66% { opacity: 0; transform: scale(0.8) translateY(6px); }
-        68%, 100% { opacity: 0; }
+        0%, 36% { opacity: 0; transform: scale(0.5) translateY(12px); }
+        39% { opacity: 1; transform: scale(0.9) translateY(2px); }
+        43%, 50% { opacity: 1; transform: scale(1.12) translateY(-4px); }
+        53% { opacity: 0.8; transform: scale(0.9) translateY(4px); }
+        56%, 100% { opacity: 0; transform: scale(0.5) translateY(12px); }
       }
 
+      /* 4. HIGH JUMP CELEBRATION SPARKLES */
       @keyframes unsaid-pet-bling-top {
-        0%, 46% { opacity: 0; transform: scale(0) rotate(0deg); }
-        50% { opacity: 1; transform: scale(1.3) rotate(45deg); }
-        56% { opacity: 1; transform: scale(1) rotate(90deg); }
-        62% { opacity: 0.9; transform: scale(0.7) rotate(135deg); }
-        66%, 100% { opacity: 0; transform: scale(0) rotate(180deg); }
+        0%, 37% { opacity: 0; transform: scale(0) rotate(0deg); }
+        41% { opacity: 1; transform: scale(1.35) rotate(45deg); }
+        47% { opacity: 1; transform: scale(1.1) rotate(90deg); }
+        53% { opacity: 0.8; transform: scale(0.7) rotate(135deg); }
+        57%, 100% { opacity: 0; transform: scale(0) rotate(180deg); }
       }
 
       @keyframes unsaid-pet-bling-cheek {
-        0%, 48% { opacity: 0; transform: scale(0); }
-        52% { opacity: 0.85; transform: scale(1); }
-        58% { opacity: 0.85; transform: scale(0.9); }
-        64%, 100% { opacity: 0; transform: scale(0); }
+        0%, 39% { opacity: 0; transform: scale(0); }
+        43%, 51% { opacity: 0.95; transform: scale(1.1); }
+        55% { opacity: 0; transform: scale(0); }
+        100% { opacity: 0; }
       }
 
-      .unsaid-dance-body {
+      .unsaid-jump-body {
         transform-origin: 256px 256px;
-        animation: unsaid-pet-dance-body 6s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
+        animation: unsaid-pet-jump-dance 4.6s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
       }
 
       .unsaid-eye {
         transform-box: fill-box;
         transform-origin: 50% 50%;
-        animation: unsaid-pet-eyes 6s infinite ease-in-out;
+        animation: unsaid-pet-eyes 4.6s infinite ease-in-out;
       }
 
       .unsaid-mouth-neutral {
         transform-box: fill-box;
         transform-origin: 50% 50%;
-        animation: unsaid-pet-mouth-neutral 6s infinite ease-in-out;
+        animation: unsaid-pet-mouth-neutral 4.6s infinite ease-in-out;
       }
 
       .unsaid-mouth-smile {
         transform-box: fill-box;
         transform-origin: 50% 50%;
-        animation: unsaid-pet-mouth-smile 6s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+        animation: unsaid-pet-mouth-smile 4.6s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
       }
 
       .unsaid-sparkle-top {
         transform-box: fill-box;
         transform-origin: 50% 50%;
-        animation: unsaid-pet-bling-top 6s infinite ease-out;
+        animation: unsaid-pet-bling-top 4.6s infinite ease-out;
       }
 
       .unsaid-sparkle-cheek {
         transform-box: fill-box;
         transform-origin: 50% 50%;
-        animation: unsaid-pet-bling-cheek 6s infinite ease-out;
+        animation: unsaid-pet-bling-cheek 4.6s infinite ease-out;
       }
     </style>
   </defs>
 
-  <!-- Dancing Pet Body -->
-  <g class="unsaid-dance-body">
+  <!-- Jumping & Dancing Pet Body -->
+  <g class="unsaid-jump-body">
     <!-- Squircle Canvas -->
     <rect width="512" height="512" rx="116" fill="url(#unsaid-bg)"/>
 

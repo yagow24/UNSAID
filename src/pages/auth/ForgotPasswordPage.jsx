@@ -45,8 +45,8 @@ export const ForgotPasswordPage = () => {
             to="/"
             className="inline-flex items-center gap-2.5 group transition-transform hover:scale-105"
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md overflow-hidden">
-              <UnsaidLogoMark className="w-full h-full" showShadow={false} />
+            <div className="relative w-10 h-10 flex items-center justify-center">
+              <UnsaidLogoMark className="w-full h-full" showShadow />
             </div>
             <span className="text-2xl font-bold tracking-tight text-[var(--text)]">
               {APP_CONFIG.name}

@@ -156,8 +156,8 @@ export const AdminSignUpPage = () => {
             to="/"
             className="inline-flex items-center gap-2.5 group transition-transform hover:scale-105"
           >
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg overflow-hidden">
-              <UnsaidLogoMark className="w-full h-full" showShadow={false} />
+            <div className="relative w-11 h-11 flex items-center justify-center">
+              <UnsaidLogoMark className="w-full h-full" showShadow />
             </div>
             <span className="text-2xl font-bold tracking-tight text-[var(--text)]">
               {APP_CONFIG.name}

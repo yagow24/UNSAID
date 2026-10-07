@@ -23,15 +23,14 @@ export const GlassLoader = ({
           aria-hidden="true"
         />
 
-        {/* Animated UNSAID App Icon */}
-        <div className="relative flex items-center justify-center my-1">
+        {/* Animated UNSAID App Icon with Jumping & Dancing */}
+        <div className="relative flex items-center justify-center my-4">
           {/* Ambient luminous glow */}
-          <div className="absolute -inset-2.5 rounded-2xl bg-gradient-to-tr from-[var(--primary)] via-[#8b5cf6] to-[var(--cyan)] opacity-40 blur-lg animate-pulse" />
+          <div className="absolute -inset-3 rounded-2xl bg-gradient-to-tr from-[var(--primary)] via-[#8b5cf6] to-[var(--cyan)] opacity-35 blur-xl pointer-events-none" />
 
           {/* Official UNSAID App Icon */}
-          <div className="relative w-16 h-16 rounded-2xl shadow-xl overflow-hidden animate-pulse">
-            <UnsaidLogoMark className="w-full h-full" showShadow={false} />
-            <span className="absolute inset-0 bg-gradient-to-tr from-white/15 to-transparent pointer-events-none" />
+          <div className="relative w-16 h-16 flex items-center justify-center">
+            <UnsaidLogoMark className="w-full h-full" showShadow />
           </div>
         </div>
 
