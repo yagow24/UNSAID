@@ -28,7 +28,7 @@ def get_status():
     # List names of matching environment variables for diagnosis (never expose values)
     detected_keys = [
         k for k in os.environ.keys()
-        if any(term in k.upper() for term in ["GEMINI", "FIREBASE", "VERCEL"])
+        if any(term in k.upper() for term in ["GEMINI", "FIREBASE", "VERCEL", "API", "KEY", "AI", "GOOGLE", "SECRET"])
     ]
     return jsonify({
         "success": True,
