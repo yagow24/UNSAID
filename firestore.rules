@@ -225,7 +225,9 @@ service cloud.firestore {
            'readByAdmin', 'readByUser'
          ]))
       );
-      allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
+      allow delete: if isWorkspaceAdmin(resource.data.workspaceId) ||
+        isOwner(resource.data.authorId) ||
+        (('createdBy' in resource.data) && isOwner(resource.data.createdBy));
 
       // Two-way messaging subcollection
       match /messages/{messageId} {

@@ -19,6 +19,7 @@ import {
   Award,
   Lock,
   Lightbulb,
+  Trash2,
 } from 'lucide-react';
 import { ModalShell } from '../ui/ModalShell';
 import { Button } from '../ui/Button';
@@ -42,6 +43,7 @@ import {
   submitQualityFeedback,
   markProblemRecurring,
   markProblemThreadRead,
+  deleteProblem,
 } from '../../services/problemService';
 
 export const ProblemDetailsModal = ({
@@ -95,6 +97,11 @@ export const ProblemDetailsModal = ({
   const [selectedLinkProblemId, setSelectedLinkProblemId] = useState('');
   const [recurrenceCount, setRecurrenceCount] = useState(2);
   const [linkingRecurrence, setLinkingRecurrence] = useState(false);
+
+  // 5. Delete Query State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingProblem, setDeletingProblem] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Real-time Firestore Subscriptions for this problem
   useEffect(() => {
@@ -169,11 +176,30 @@ export const ProblemDetailsModal = ({
 
   const isAuthor =
     currentUser?.uid &&
-    (problem.authorId === currentUser.uid || problem.createdBy === currentUser.uid);
+    (problem.authorId === currentUser.uid ||
+      problem.createdBy === currentUser.uid ||
+      (problem.authorEmail && currentUser.email && problem.authorEmail === currentUser.email));
 
   const isAdmin =
     userProfile?.role === 'admin' ||
     workspace?.createdBy === currentUser?.uid;
+
+  const handleDeleteProblem = async () => {
+    if (!problem?.id) return;
+    setDeletingProblem(true);
+    setDeleteError('');
+    try {
+      await deleteProblem(problem.id, workspace?.id || problem.workspaceId);
+      setShowDeleteConfirm(false);
+      if (onStatusChanged) onStatusChanged(problem.id, 'deleted');
+      if (onClose) onClose();
+    } catch (err) {
+      console.error('[UNSAID Delete Problem Error]', err);
+      setDeleteError(err.message || 'Failed to delete query.');
+    } finally {
+      setDeletingProblem(false);
+    }
+  };
 
   // Format Helper
   const formatTimestamp = (ts) => {
@@ -450,6 +476,20 @@ export const ProblemDetailsModal = ({
                 onClick={handleToggleStatus}
               >
                 {isSolved ? 'Reopen Query' : 'Mark as Solved'}
+              </Button>
+            )}
+            {(isAdmin || isAuthor) && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                icon={<Trash2 className="w-4 h-4" />}
+                onClick={() => {
+                  setDeleteError('');
+                  setShowDeleteConfirm(true);
+                }}
+              >
+                Delete Query
               </Button>
             )}
           </div>
@@ -1304,6 +1344,65 @@ export const ProblemDetailsModal = ({
           </div>
         )}
       </div>
+
+      {/* Delete Query Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[var(--text)]">Delete Query?</h3>
+                <p className="text-xs text-[var(--text-muted)]">Permanent removal from workspace</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[var(--surface-hover)] border border-[var(--glass-border)] space-y-1">
+              <p className="text-xs font-bold text-[var(--text)] line-clamp-1">{problem.title}</p>
+              <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2">{problem.description}</p>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              If you made a mistake or want to remove this query, deleting it will permanently remove it from the workspace feed and discussions.
+            </p>
+
+            {deleteError && (
+              <p className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 p-2.5 rounded-xl border border-[var(--danger)]/20">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deletingProblem}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                isLoading={deletingProblem}
+                disabled={deletingProblem}
+                onClick={handleDeleteProblem}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Query
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </ModalShell>
   );
 };
+

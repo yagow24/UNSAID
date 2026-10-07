@@ -11,12 +11,16 @@ import {
   CheckCircle2,
   Lock,
   CloudOff,
+  Trash2,
+  AlertTriangle,
+  User,
 } from 'lucide-react';
 import { GlassCard } from '../ui/GlassCard';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ProblemDetailsModal } from './ProblemDetailsModal';
-import { toggleProblemUpvote } from '../../services/problemService';
+import { toggleProblemUpvote, deleteProblem } from '../../services/problemService';
+import { useAuth } from '../../hooks/useAuth';
 
 export const ProblemFeed = ({
   problems = [],
@@ -26,22 +30,51 @@ export const ProblemFeed = ({
   onOpenReportModal,
   onRefresh,
 }) => {
+  const { currentUser: authUser, userProfile } = useAuth();
+  const effectiveUser = currentUser || authUser;
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'open' | 'emergency' | 'solved'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'mine' | 'open' | 'emergency' | 'solved' | 'confidential'
   const [upvotingId, setUpvotingId] = useState(null);
   const [selectedProblem, setSelectedProblem] = useState(null);
 
+  // Delete State
+  const [problemToDelete, setProblemToDelete] = useState(null);
+  const [deletingProblem, setDeletingProblem] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const canDeleteProblem = (prob) => {
+    if (!effectiveUser?.uid) return false;
+    return (
+      prob.authorId === effectiveUser.uid ||
+      prob.createdBy === effectiveUser.uid ||
+      (prob.authorEmail && effectiveUser.email && prob.authorEmail === effectiveUser.email) ||
+      userProfile?.role === 'admin' ||
+      workspace?.createdBy === effectiveUser.uid
+    );
+  };
+
   const filteredProblems = useMemo(() => {
     return problems.filter((prob) => {
-      // 1. Confidential filter: private threads never appear in public feed tabs
+      // 1. My queries filter
+      if (statusFilter === 'mine') {
+        if (!effectiveUser?.uid) return false;
+        const isMine =
+          prob.authorId === effectiveUser.uid ||
+          prob.createdBy === effectiveUser.uid ||
+          (prob.authorEmail && effectiveUser.email && prob.authorEmail === effectiveUser.email);
+        if (!isMine) return false;
+      }
+
+      // 2. Confidential filter: private threads never appear in public feed tabs
       if (statusFilter === 'confidential') {
         if (!prob.isConfidential) return false;
-      } else {
+      } else if (statusFilter !== 'mine') {
         if (prob.isConfidential) return false;
       }
 
       // Archived problems (threshold reached >= 65%) are removed from active feed, but can be viewed under "solved" or history
-      if (statusFilter !== 'solved' && statusFilter !== 'confidential' && (prob.isArchivedFromFeed || prob.acknowledgementReached)) {
+      if (statusFilter !== 'solved' && statusFilter !== 'confidential' && statusFilter !== 'mine' && (prob.isArchivedFromFeed || prob.acknowledgementReached)) {
         return false;
       }
 
@@ -61,11 +94,23 @@ export const ProblemFeed = ({
 
       return true;
     });
-  }, [problems, statusFilter, searchQuery]);
+  }, [problems, statusFilter, searchQuery, effectiveUser]);
 
   const activeCount = useMemo(
     () => problems.filter((p) => !p.isConfidential && !p.isArchivedFromFeed && !p.acknowledgementReached).length,
     [problems]
+  );
+  const myCount = useMemo(
+    () =>
+      problems.filter((p) =>
+        Boolean(
+          effectiveUser?.uid &&
+            (p.authorId === effectiveUser.uid ||
+              p.createdBy === effectiveUser.uid ||
+              (p.authorEmail && effectiveUser.email && p.authorEmail === effectiveUser.email))
+        )
+      ).length,
+    [problems, effectiveUser]
   );
   const emergencyCount = useMemo(
     () => problems.filter((p) => !p.isConfidential && p.isEmergency && !p.isArchivedFromFeed && !p.acknowledgementReached).length,
@@ -85,10 +130,10 @@ export const ProblemFeed = ({
   );
 
   const handleUpvote = async (problemId) => {
-    if (!currentUser?.uid || !workspace?.id || upvotingId === problemId) return;
+    if (!effectiveUser?.uid || !workspace?.id || upvotingId === problemId) return;
     setUpvotingId(problemId);
     try {
-      await toggleProblemUpvote(problemId, currentUser.uid, workspace.id);
+      await toggleProblemUpvote(problemId, effectiveUser.uid, workspace.id);
       if (onRefresh) {
         onRefresh();
       }
@@ -96,6 +141,27 @@ export const ProblemFeed = ({
       console.error('[UNSAID Upvote Error]', err);
     } finally {
       setUpvotingId(null);
+    }
+  };
+
+  const handleDeleteProblemConfirm = async () => {
+    if (!problemToDelete?.id) return;
+    setDeletingProblem(true);
+    setDeleteError('');
+    try {
+      await deleteProblem(problemToDelete.id, workspace?.id || problemToDelete.workspaceId);
+      if (selectedProblem?.id === problemToDelete.id) {
+        setSelectedProblem(null);
+      }
+      setProblemToDelete(null);
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('[UNSAID Delete Problem Error]', err);
+      setDeleteError(err.message || 'Failed to delete query. Please try again.');
+    } finally {
+      setDeletingProblem(false);
     }
   };
 
@@ -146,6 +212,18 @@ export const ProblemFeed = ({
             }`}
           >
             Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('mine')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'mine'
+                ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm'
+                : 'bg-[var(--surface)] hover:bg-[var(--glass-hover)] border-[var(--glass-border)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>My Queries ({myCount})</span>
           </button>
           <button
             type="button"
@@ -393,6 +471,24 @@ export const ProblemFeed = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Delete Query Button (Allowed for author or admin) */}
+                    {canDeleteProblem(prob) && (
+                      <button
+                        type="button"
+                        disabled={deletingProblem && problemToDelete?.id === prob.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProblemToDelete(prob);
+                          setDeleteError('');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--danger)]/30 bg-[var(--danger)]/10 hover:bg-[var(--danger)]/20 text-[var(--danger)] text-xs font-semibold transition-all cursor-pointer hover:scale-105 active:scale-95"
+                        title="Delete this query if you made a mistake"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    )}
+
                     {/* View Thread & Discuss Button */}
                     <button
                       type="button"
@@ -442,6 +538,64 @@ export const ProblemFeed = ({
             if (onRefresh) onRefresh();
           }}
         />
+      )}
+
+      {/* Delete Query Confirmation Modal */}
+      {problemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[var(--text)]">Delete Query?</h3>
+                <p className="text-xs text-[var(--text-muted)]">Permanent removal from workspace feed</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[var(--surface-hover)] border border-[var(--glass-border)] space-y-1">
+              <p className="text-xs font-bold text-[var(--text)] line-clamp-1">{problemToDelete.title}</p>
+              <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2">{problemToDelete.description}</p>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              If you made a mistake or want to remove this query, deleting it will permanently remove it and its discussion thread from the workspace.
+            </p>
+
+            {deleteError && (
+              <p className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 p-2.5 rounded-xl border border-[var(--danger)]/20">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deletingProblem}
+                onClick={() => {
+                  setProblemToDelete(null);
+                  setDeleteError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                isLoading={deletingProblem}
+                disabled={deletingProblem}
+                onClick={handleDeleteProblemConfirm}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Query
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

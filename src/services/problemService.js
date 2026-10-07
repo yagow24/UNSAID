@@ -1059,4 +1059,37 @@ export const markProblemRecurring = async ({
   return { isRecurring: true, recurrenceOf, linkedProblemTitle, recurrenceCount };
 };
 
+/**
+ * Permanently deletes a problem/query.
+ * Authorized for the author who reported the problem or workspace administrators.
+ *
+ * @param {string} problemId
+ * @param {string} [workspaceId]
+ * @returns {Promise<{ success: boolean }>}
+ */
+export const deleteProblem = async (problemId, workspaceId) => {
+  if (!problemId) {
+    throw new Error('Problem identifier is required to delete.');
+  }
 
+  // Remove from local storage cache if workspaceId is provided
+  if (workspaceId) {
+    try {
+      const existing = getLocalProblems(workspaceId);
+      const filtered = existing.filter((p) => p.id !== problemId);
+      localStorage.setItem(
+        `${LOCAL_STORAGE_PROBLEMS_PREFIX}${workspaceId}`,
+        JSON.stringify(filtered)
+      );
+    } catch (err) {
+      console.warn('[UNSAID Problem Service] Failed to remove from local cache:', err);
+    }
+  }
+
+  if (db) {
+    const probRef = doc(db, 'problems', problemId);
+    await withTimeout(deleteDoc(probRef), 7000);
+  }
+
+  return { success: true };
+};

@@ -25,6 +25,7 @@ import {
   Bot,
   Lightbulb,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 
 import { GlassCard } from '../ui/GlassCard';
@@ -52,6 +53,7 @@ import {
   markProblemRecurring,
   updateProblemStatus,
   markProblemThreadRead,
+  deleteProblem,
 } from '../../services/problemService';
 import { subscribeToProblemPoll } from '../../services/pollService';
 
@@ -162,6 +164,29 @@ export const QueryTriageWorkspace = ({
   const [analyzingWithAI, setAnalyzingWithAI] = useState(false);
   const [aiTriageAnalysis, setAiTriageAnalysis] = useState(null);
   const [aiTriageError, setAiTriageError] = useState('');
+
+  // Delete Query State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingQuery, setDeletingQuery] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteQuery = async () => {
+    if (!selectedProblem?.id) return;
+    setDeletingQuery(true);
+    setDeleteError('');
+    try {
+      await deleteProblem(selectedProblem.id, workspace?.id || selectedProblem.workspaceId);
+      setShowDeleteModal(false);
+      setInternalSelectedId(null);
+      if (onSelectProblem) onSelectProblem(null);
+      if (onProblemUpdated) onProblemUpdated({ id: selectedProblem.id, deleted: true });
+    } catch (err) {
+      console.error('[UNSAID Admin Delete Query Error]', err);
+      setDeleteError(err.message || 'Failed to delete query.');
+    } finally {
+      setDeletingQuery(false);
+    }
+  };
 
   // Role Checks
   const isAdmin =
@@ -972,9 +997,24 @@ export const QueryTriageWorkspace = ({
                     </span>
                   </div>
 
-                  <span className="text-[11px] text-[var(--text-muted)] font-mono">
-                    Workspace: {workspace?.name || 'Current'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[var(--text-muted)] font-mono">
+                      Workspace: {workspace?.name || 'Current'}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setDeleteError('');
+                        setShowDeleteModal(true);
+                      }}
+                      className="text-xs text-[var(--danger)] hover:bg-[var(--danger)]/15 h-7 px-2"
+                      icon={<Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
 
                 <h3 className="text-lg font-extrabold text-[var(--text)] tracking-tight">
@@ -1874,6 +1914,64 @@ export const QueryTriageWorkspace = ({
               </div>
             </form>
           </GlassCard>
+        </div>
+      )}
+
+      {/* Delete Query Modal */}
+      {showDeleteModal && selectedProblem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[var(--text)]">Delete Query?</h3>
+                <p className="text-xs text-[var(--text-muted)]">Permanent removal from workspace</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[var(--surface-hover)] border border-[var(--glass-border)] space-y-1">
+              <p className="text-xs font-bold text-[var(--text)] line-clamp-1">{selectedProblem.title}</p>
+              <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2">{selectedProblem.description}</p>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Are you sure you want to delete this query? It will be permanently removed along with all messages, acknowledgements, and triage history.
+            </p>
+
+            {deleteError && (
+              <p className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 p-2.5 rounded-xl border border-[var(--danger)]/20">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deletingQuery}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                isLoading={deletingQuery}
+                disabled={deletingQuery}
+                onClick={handleDeleteQuery}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Query
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
