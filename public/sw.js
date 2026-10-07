@@ -1,10 +1,11 @@
-const CACHE_NAME = 'unsaid-pwa-v2';
+const CACHE_NAME = 'unsaid-pwa-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/favicon.svg',
   '/favicon-32x32.png',
   '/favicon-16x16.png',
+  '/favicon.ico',
   '/apple-touch-icon.png',
   '/manifest.webmanifest',
 ];
