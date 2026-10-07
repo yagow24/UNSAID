@@ -39,6 +39,7 @@ export const SubmitProblemModal = ({
   userProfile: propUserProfile,
   onProblemSubmitted,
   defaultEmergency = false,
+  candidateProblems = [],
 }) => {
   const { currentUser: authUser, userProfile: authProfile } = useAuth();
   const currentUser = propCurrentUser || authUser;
@@ -286,7 +287,7 @@ export const SubmitProblemModal = ({
   };
 
   // Final submission execution (writes to Firebase Storage & Firestore)
-  const executePublish = async () => {
+  const executePublish = async (aiAnalysis = null) => {
     setError('');
     setSubmitting(true);
 
@@ -331,6 +332,7 @@ export const SubmitProblemModal = ({
         pseudonym,
         imageUrl,
         imagePath,
+        aiAnalysis,
       });
 
       if (onProblemSubmitted) {
@@ -884,6 +886,7 @@ export const SubmitProblemModal = ({
         onSatisfied={handleSatisfiedLocally}
         onPublish={executePublish}
         submitting={submitting}
+        candidateProblems={candidateProblems}
         problemDraft={{
           workspaceId: workspace?.id,
           title,

@@ -21,16 +21,22 @@ import {
   ShieldCheck,
   AlertCircle,
   X,
+  Sparkles,
+  Bot,
+  Lightbulb,
+  Loader2,
 } from 'lucide-react';
 
 import { GlassCard } from '../ui/GlassCard';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { CommunityPollWidget } from '../poll/CommunityPollWidget';
+import { AdminAISummaryModal } from './AdminAISummaryModal';
 import { useAuth } from '../../hooks/useAuth';
 import { useIdentity } from '../../hooks/useIdentity';
 import { getShiftStatus } from '../../config/shiftConfig';
 import { buildProblemActivityTimeline } from '../../utils/activityTimeline';
+import { fetchAIResolution } from '../../services/aiResolutionService';
 
 import {
   subscribeToProblemMessages,
@@ -150,6 +156,12 @@ export const QueryTriageWorkspace = ({
   const [linkedProblemId, setLinkedProblemId] = useState('');
   const [recurrenceCount, setRecurrenceCount] = useState(2);
   const [savingRecurrence, setSavingRecurrence] = useState(false);
+
+  // Gemini AI Triage & Summary States
+  const [showAISummaryModal, setShowAISummaryModal] = useState(false);
+  const [analyzingWithAI, setAnalyzingWithAI] = useState(false);
+  const [aiTriageAnalysis, setAiTriageAnalysis] = useState(null);
+  const [aiTriageError, setAiTriageError] = useState('');
 
   // Role Checks
   const isAdmin =
@@ -570,6 +582,50 @@ export const QueryTriageWorkspace = ({
     }
   };
 
+  // Sync AI analysis when selectedProblem changes
+  useEffect(() => {
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        setAiTriageAnalysis(selectedProblem?.aiAnalysis || null);
+        setAiTriageError('');
+      }
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [selectedProblem?.id, selectedProblem?.aiAnalysis]);
+
+  const handleRunAIAnalyze = async () => {
+    if (!selectedProblem || !workspace?.id) return;
+    setAnalyzingWithAI(true);
+    setAiTriageError('');
+
+    try {
+      const res = await fetchAIResolution({
+        workspaceId: workspace.id,
+        title: selectedProblem.title,
+        description: selectedProblem.description,
+        category: selectedProblem.category,
+        subIssue: selectedProblem.subIssue,
+        workaround: selectedProblem.workaround,
+        isEmergency: selectedProblem.isEmergency,
+        candidateProblems: problems.filter((p) => p.id !== selectedProblem.id),
+      });
+
+      if (res.available && res.analysis) {
+        setAiTriageAnalysis(res.analysis);
+      } else {
+        setAiTriageError(res.message || 'AI analysis temporarily unavailable.');
+      }
+    } catch (err) {
+      console.error('[UNSAID AI Triage Error]', err);
+      setAiTriageError('Failed to run AI analysis.');
+    } finally {
+      setAnalyzingWithAI(false);
+    }
+  };
+
   const toggleDismissReveal = (msgId) => {
     setRevealedDismissedIds((prev) => {
       const next = new Set(prev);
@@ -600,13 +656,22 @@ export const QueryTriageWorkspace = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-[var(--text-muted)]">
               Workspace:{' '}
               <strong className="text-[var(--text)]">
                 {workspace?.name || 'Default Workspace'}
               </strong>
             </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Bot className="w-3.5 h-3.5 text-[var(--cyan)]" />}
+              onClick={() => setShowAISummaryModal(true)}
+              className="text-xs h-7 ml-1"
+            >
+              AI Summary
+            </Button>
           </div>
         </div>
 
@@ -929,6 +994,128 @@ export const QueryTriageWorkspace = ({
                       {selectedProblem.workaround}
                     </p>
                   </div>
+                )}
+              </div>
+
+              {/* ========================================================= */}
+              {/* UNSAID AI TRIAGE ASSESSMENT & RECOMMENDATIONS              */}
+              {/* ========================================================= */}
+              <div className="p-4 rounded-2xl bg-[var(--surface-hover)] border border-[var(--cyan)]/25 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-[var(--cyan)]/15 text-[var(--cyan)] flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </span>
+                    <span className="text-xs font-bold text-[var(--text)]">
+                      UNSAID AI Triage Assessment
+                    </span>
+                    {aiTriageAnalysis && (
+                      <Badge variant="cyan" size="sm">
+                        {aiTriageAnalysis.model || 'gemini-2.5-flash'}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant={aiTriageAnalysis ? 'ghost' : 'secondary'}
+                    size="sm"
+                    icon={analyzingWithAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-[var(--cyan)]" />}
+                    onClick={handleRunAIAnalyze}
+                    isLoading={analyzingWithAI}
+                    disabled={analyzingWithAI}
+                    className="text-xs h-7"
+                  >
+                    {aiTriageAnalysis ? 'Re-analyze with AI' : 'AI Analyze'}
+                  </Button>
+                </div>
+
+                {/* If analysis is available */}
+                {aiTriageAnalysis && (
+                  <div className="space-y-3 pt-1 text-xs">
+                    {/* Priority Comparison Notice */}
+                    <div className="p-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        Priority Evaluation:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[var(--text-secondary)]">
+                          Admin Priority: <strong className="uppercase">{selectedProblem.priority || 'normal'}</strong>
+                        </span>
+                        <span className="text-[var(--text-muted)]">·</span>
+                        <span className="text-[11px] font-semibold text-[var(--cyan)]">
+                          AI recommends {aiTriageAnalysis.priority ? (aiTriageAnalysis.priority.charAt(0).toUpperCase() + aiTriageAnalysis.priority.slice(1)) : 'Normal'} priority
+                        </span>
+                        <Badge
+                          variant={
+                            aiTriageAnalysis.priority === 'high'
+                              ? 'high'
+                              : aiTriageAnalysis.priority === 'low'
+                              ? 'low'
+                              : 'medium'
+                          }
+                          size="sm"
+                        >
+                          {aiTriageAnalysis.priority ? aiTriageAnalysis.priority.toUpperCase() : 'NORMAL'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Problem Summary & Likely Cause */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] space-y-1">
+                        <span className="text-[10px] uppercase font-bold text-[var(--cyan)] block">
+                          Problem Summary
+                        </span>
+                        <p className="text-[11px] text-[var(--text)] leading-relaxed">
+                          {aiTriageAnalysis.summary}
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] space-y-1">
+                        <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block">
+                          Likely Cause
+                        </span>
+                        <p className="text-[11px] text-[var(--text)] leading-relaxed">
+                          {aiTriageAnalysis.likelyCause || 'Operational or physical malfunction'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Suggested Next Action & Human Attention */}
+                    <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] flex items-center gap-1.5">
+                          <Lightbulb className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                          Suggested Next Action
+                        </span>
+                        <Badge
+                          variant={aiTriageAnalysis.needsHumanAttention ? 'warning' : 'low'}
+                          size="sm"
+                        >
+                          {aiTriageAnalysis.needsHumanAttention ? 'Staff Action Required' : 'Self-Service Possible'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                        {aiTriageAnalysis.suggestedWorkaround}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* If error occurred */}
+                {aiTriageError && (
+                  <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--warning)] flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{aiTriageError}</span>
+                  </div>
+                )}
+
+                {/* Prompt to analyze if none present yet */}
+                {!aiTriageAnalysis && !aiTriageError && !analyzingWithAI && (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Click "AI Analyze" to generate root cause insights, priority recommendations, and actionable triage steps.
+                  </p>
                 )}
               </div>
 
@@ -1671,6 +1858,14 @@ export const QueryTriageWorkspace = ({
           </GlassCard>
         </div>
       )}
+
+      {/* AI Executive Summary Modal */}
+      <AdminAISummaryModal
+        isOpen={showAISummaryModal}
+        onClose={() => setShowAISummaryModal(false)}
+        workspace={workspace}
+        problems={problems}
+      />
     </div>
   );
 };

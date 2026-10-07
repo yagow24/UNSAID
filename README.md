@@ -108,26 +108,60 @@ All scripts run via npm without OS-dependent shell commands:
 | `npm run build` | `vite build` | Compiles optimized production bundle |
 | `npm run lint` | `oxlint` | High-performance codebase linting |
 | `npm run preview` | `vite preview` | Locally previews production build |
+| `npm run backend` | `python3 backend/app.py` | Starts Flask Gemini AI backend server |
+| `npm run backend:test` | `python3 -m unittest ...` | Runs backend unit & integration tests |
 
 ---
 
-## Backend Environment (Future / Part 5)
+## Gemini AI Setup (Backend)
 
-If Python backend services are initialized:
+UNSAID integrates Google's official Gemini Python SDK (`google-genai`) running on a secure Flask backend for query triage, pre-submit resolution, duplicate detection, and executive summaries.
 
-**Windows**:
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
+> [!CAUTION]
+> **CRITICAL SECURITY REQUIREMENT**:
+> The `GEMINI_API_KEY` must **NEVER** be placed in frontend/Vite environment variables (`VITE_...`), React source code, browser localStorage, or GitHub. The frontend communicates exclusively with the Flask API using verified Firebase Bearer tokens.
 
-**macOS / Linux**:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+### Step-by-Step Setup:
+
+1. **Obtain Gemini API Key**:
+   Create an API key from Google AI Studio ([https://aistudio.google.com/](https://aistudio.google.com/)).
+
+2. **Configure Backend Environment**:
+   In your root `.env` (or `backend/.env`):
+   ```env
+   GEMINI_API_KEY=your_actual_gemini_api_key
+   GEMINI_MODEL=gemini-2.5-flash
+   PORT=5001
+   FIREBASE_PROJECT_ID=unsaid-app-14199-4b37e
+   ```
+
+3. **Install Backend Dependencies**:
+   ```bash
+   # Create and activate Python virtual environment
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+   # Install packages
+   pip install -r backend/requirements.txt
+   ```
+
+4. **Start the Flask Backend**:
+   ```bash
+   npm run backend
+   # Or: python3 backend/app.py
+   ```
+   The backend will be available at `http://127.0.0.1:5001`.
+
+5. **Start the React Frontend**:
+   ```bash
+   npm run dev
+   ```
+   The Vite dev server proxies `/api` calls directly to the Flask backend.
+
+6. **Run Backend Test Suite**:
+   ```bash
+   npm run backend:test
+   ```
 
 ---
 

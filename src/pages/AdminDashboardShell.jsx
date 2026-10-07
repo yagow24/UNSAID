@@ -5,6 +5,7 @@ import {
   Bot,
   Clock,
   Bell,
+  Sparkles,
 } from 'lucide-react';
 
 import { useWorkspace } from '../hooks/useWorkspace';
@@ -17,6 +18,7 @@ import { GenerateInviteModal } from '../components/workspace/GenerateInviteModal
 import { WorkspaceRequestsModal } from '../components/workspace/WorkspaceRequestsModal';
 import { ProblemDetailsModal } from '../components/problem/ProblemDetailsModal';
 import { QueryTriageWorkspace } from '../components/triage/QueryTriageWorkspace';
+import { AdminAISummaryModal } from '../components/triage/AdminAISummaryModal';
 import { OfflineBanner } from '../components/common/OfflineBanner';
 import { subscribeToWorkspaceProblems } from '../services/problemService';
 
@@ -29,6 +31,7 @@ export const AdminDashboardShell = () => {
   const { currentWorkspace, pendingRequests, pendingRequestsCount } = useWorkspace();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
+  const [aiSummaryModalOpen, setAiSummaryModalOpen] = useState(false);
 
   // Real-time Firestore workspace problems state
   const [problems, setProblems] = useState([]);
@@ -217,12 +220,23 @@ export const AdminDashboardShell = () => {
 
         <GlassCard className="space-y-3">
           <div className="flex items-center justify-between text-[var(--text-muted)] text-xs font-semibold uppercase tracking-wider">
-            <span>AI Summaries Generated</span>
+            <span>AI Summaries</span>
             <Bot className="w-4 h-4 text-[var(--cyan)]" />
           </div>
-          <div className="text-3xl font-extrabold text-[var(--text)]">--</div>
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-extrabold text-[var(--text)]">Active</div>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Sparkles className="w-3.5 h-3.5 text-[var(--cyan)]" />}
+              onClick={() => setAiSummaryModalOpen(true)}
+              className="text-xs h-7"
+            >
+              Generate
+            </Button>
+          </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Gemini Flash integration in Part 5
+            Powered by Gemini 2.5 Flash
           </p>
         </GlassCard>
 
@@ -288,6 +302,12 @@ export const AdminDashboardShell = () => {
           );
           setSelectedProblem(updated);
         }}
+      />
+      <AdminAISummaryModal
+        isOpen={aiSummaryModalOpen}
+        onClose={() => setAiSummaryModalOpen(false)}
+        workspace={currentWorkspace}
+        problems={problems}
       />
     </PageContainer>
     </>

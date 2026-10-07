@@ -410,6 +410,7 @@ export const UserDashboardShell = () => {
         currentUser={currentUser}
         userProfile={userProfile}
         defaultEmergency={reportIsEmergency}
+        candidateProblems={problems}
         onProblemSubmitted={handleProblemSubmitted}
       />
 

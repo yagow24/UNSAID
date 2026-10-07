@@ -108,6 +108,7 @@ export const submitProblem = async ({
   pseudonym = null,
   imageUrl = null,
   imagePath = null,
+  aiAnalysis = null,
 }) => {
   if (!workspaceId) {
     throw new Error('Workspace identifier is required to submit a problem.');
@@ -152,6 +153,7 @@ export const submitProblem = async ({
     isAnonymous: Boolean(isAnonymous),
     imageUrl: imageUrl || null,
     imagePath: imagePath || null,
+    aiAnalysis: aiAnalysis || null,
     upvotesCount: 0,
     upvotedBy: [],
     createdAt: serverTimestamp(),
