@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles,
   Loader2,
@@ -20,46 +20,58 @@ export const AdminAISummaryModal = ({
   const [loading, setLoading] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [error, setError] = useState('');
+  const hasLoadedRef = useRef(false);
+  const loadingRef = useRef(false);
+  const problemsRef = useRef(problems);
 
   useEffect(() => {
-    let active = true;
-    if (isOpen && workspace?.id) {
-      queueMicrotask(() => {
-        if (active) {
-          setLoading(true);
-          setError('');
-          setSummaryData(null);
-        }
-      });
+    problemsRef.current = problems;
+  }, [problems]);
 
-      fetchAdminAISummary({
+  const loadSummary = useCallback(async () => {
+    if (!workspace?.id || loadingRef.current) return;
+
+    loadingRef.current = true;
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetchAdminAISummary({
         workspaceId: workspace.id,
         workspaceName: workspace.name || 'Workspace',
-        problems,
-      })
-        .then((res) => {
-          if (!active) return;
-          if (res.success && res.summary) {
-            setSummaryData(res.summary);
-          } else {
-            setError(res.error || 'AI summary is temporarily unavailable.');
-          }
-        })
-        .catch((_err) => {
-          if (!active) return;
-          setError('Failed to generate AI summary. You can still triage queries manually.');
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-    }
+        problems: problemsRef.current || [],
+      });
 
-    return () => {
-      active = false;
-    };
-  }, [isOpen, workspace?.id, workspace?.name, problems]);
+      if (res.success && res.summary) {
+        setSummaryData(res.summary);
+        setError('');
+      } else {
+        setError(res.error || 'AI summary is temporarily unavailable.');
+      }
+    } catch {
+      setError('Failed to generate AI summary. You can still triage queries manually.');
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }, [workspace?.id, workspace?.name]);
+
+  useEffect(() => {
+    if (isOpen && workspace?.id) {
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true;
+        loadSummary();
+      }
+    } else {
+      hasLoadedRef.current = false;
+      setSummaryData(null);
+      setError('');
+    }
+  }, [isOpen, workspace?.id, loadSummary]);
 
   if (!isOpen) return null;
+
+
 
   return (
     <ModalShell
@@ -82,7 +94,7 @@ export const AdminAISummaryModal = ({
             <div>
               <p className="text-sm font-semibold text-[var(--text)]">Synthesizing Query Data...</p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Gemini is analyzing {problems.length} active queries for patterns, bottlenecks, and recommendations.
+                Synthesizing {problems.length} active queries for patterns, bottlenecks, and recommendations.
               </p>
             </div>
           </div>
@@ -90,16 +102,29 @@ export const AdminAISummaryModal = ({
 
         {/* Error State */}
         {!loading && error && (
-          <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-[var(--warning)] shrink-0 mt-0.5" />
-            <div className="space-y-1 text-xs">
-              <span className="font-semibold text-[var(--text)] block">
-                AI Summary Unavailable
-              </span>
-              <p className="text-[var(--text-muted)] leading-relaxed">{error}</p>
+          <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] flex flex-col sm:flex-row items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-[var(--warning)] shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <span className="font-semibold text-[var(--text)] block">
+                  AI Summary Unavailable
+                </span>
+                <p className="text-[var(--text-muted)] leading-relaxed">{error}</p>
+              </div>
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={<RotateCcw className="w-3.5 h-3.5" />}
+              onClick={loadSummary}
+              className="shrink-0 self-end sm:self-auto"
+            >
+              Retry
+            </Button>
           </div>
         )}
+
 
         {/* Successful Summary Data */}
         {!loading && summaryData && (
@@ -110,8 +135,8 @@ export const AdminAISummaryModal = ({
                 <Sparkles className="w-4 h-4 text-[var(--cyan)]" />
                 AI Executive Overview
               </span>
-              <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                {summaryData.model || 'gemini-2.5-flash'} · {problems.length} records analyzed
+              <span className="text-[10px] text-[var(--text-muted)]">
+                {problems.length} queries synthesized
               </span>
             </div>
 

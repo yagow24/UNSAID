@@ -9,8 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "backend": "python3 backend/app.py",
-    "backend:test": "python3 -m unittest discover backend/tests"
+    "backend:test": "python3 -m unittest discover backend/tests",
+    "backend:diag": "python3 backend/diagnostic.py"
   },
+
   "dependencies": {
     "firebase": "^12.19.0",
     "lucide-react": "^1.50.0",

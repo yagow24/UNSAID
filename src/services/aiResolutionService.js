@@ -100,7 +100,8 @@ export const fetchAIResolution = async ({
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
 
   try {
     const headers = await getAuthHeaders();
@@ -119,14 +120,20 @@ export const fetchAIResolution = async ({
       const msg =
         errData?.error?.message ||
         'AI suggestions are temporarily unavailable. You can still submit your problem.';
+      const details = errData?.error?.details || '';
+
+      console.warn(`[UNSAID AI] Backend returned ${code}:`, details || msg);
 
       return {
         available: false,
         reason: code,
+        category: errData?.error?.category || 'error',
         message: msg,
+        details,
         analysis: null,
       };
     }
+
 
     const data = await response.json();
 
@@ -221,7 +228,8 @@ export const fetchAdminAISummary = async ({
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
 
   try {
     const headers = await getAuthHeaders();
@@ -236,13 +244,19 @@ export const fetchAdminAISummary = async ({
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
+      const code = errData?.error?.code || `HTTP_${response.status}`;
+      const msg =
+        errData?.error?.message ||
+        'AI summary is temporarily unavailable.';
+      const details = errData?.error?.details || '';
+      console.warn(`[UNSAID AI Summary] Backend returned ${code}:`, details || msg);
       return {
         success: false,
-        error:
-          errData?.error?.message ||
-          'AI summary is temporarily unavailable.',
+        error: msg,
+        details,
       };
     }
+
 
     const data = await response.json();
     return {
@@ -273,9 +287,101 @@ export const checkAIStatus = async () => {
     return {
       online: true,
       aiConfigured: Boolean(data.aiConfigured),
-      model: data.model || 'gemini-2.5-flash',
+      model: data.model || 'gemini-2.5-flash-lite',
     };
   } catch {
     return { online: false, aiConfigured: false };
   }
 };
+
+/**
+ * Sends a conversational message from the user chatbot to the backend Gemini AI.
+ * 
+ * @param {Object} params
+ * @param {string} params.workspaceId
+ * @param {string} [params.workspaceName]
+ * @param {string} params.message
+ * @param {Array} [params.history]
+ * @returns {Promise<Object>}
+ */
+export const sendUserChatMessage = async ({
+  workspaceId,
+  workspaceName = 'Workspace',
+  message,
+  history = [],
+}) => {
+  if (!workspaceId) {
+    return {
+      success: false,
+      error: 'Workspace context is required.',
+    };
+  }
+
+  if (!message || !message.trim()) {
+    return {
+      success: false,
+      error: 'Message cannot be empty.',
+    };
+  }
+
+  const payload = {
+    workspaceId,
+    workspaceName,
+    message: message.trim(),
+    history: Array.isArray(history)
+      ? history.slice(-8).map((h) => ({
+          sender: h.sender || (h.isUser ? 'user' : 'model'),
+          text: h.text || h.content || '',
+        }))
+      : [],
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/api/ai/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const code = errData?.error?.code || `HTTP_${response.status}`;
+      const msg =
+        errData?.error?.message ||
+        'AI assistant is temporarily unavailable.';
+      return {
+        success: false,
+        error: msg,
+        code,
+      };
+    }
+
+    const data = await response.json();
+    if (!data.success || typeof data.reply !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid response from AI assistant.',
+      };
+    }
+
+    return {
+      success: true,
+      reply: data.reply,
+      model: data.model,
+    };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    return {
+      success: false,
+      error: err.name === 'AbortError' ? 'AI request timed out.' : 'AI network error.',
+    };
+  }
+};
+

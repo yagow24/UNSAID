@@ -17,7 +17,7 @@ import logging
 from collections import defaultdict
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from backend.config import PORT, HOST, is_gemini_configured, GEMINI_MODEL
+from backend.config import PORT, HOST, is_gemini_configured, get_gemini_model
 from backend.routes.ai_routes import ai_bp
 
 # Configure safe logging
@@ -84,7 +84,7 @@ def health_check():
         "status": "healthy",
         "service": "unsaid-backend",
         "aiConfigured": is_gemini_configured(),
-        "model": GEMINI_MODEL,
+        "model": get_gemini_model(),
     })
 
 # Global error handlers

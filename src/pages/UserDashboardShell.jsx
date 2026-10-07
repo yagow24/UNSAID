@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Building2,
   XCircle,
+  Sparkles,
 } from 'lucide-react';
 
 import { useAuth } from '../hooks/useAuth';
@@ -27,6 +28,8 @@ import { DailyCheckInWidget } from '../components/checkin/DailyCheckInWidget';
 import { ProblemFeed } from '../components/problem/ProblemFeed';
 import { SubmitProblemModal } from '../components/problem/SubmitProblemModal';
 import { WorkspaceHistoryModal } from '../components/history/WorkspaceHistoryModal';
+import { UserChatbotModal } from '../components/chat/UserChatbotModal';
+import { UnsaidLogoMark } from '../components/ui/UnsaidLogoMark';
 import { OfflineBanner } from '../components/common/OfflineBanner';
 import { getShiftStatus } from '../config/shiftConfig';
 import { getWorkspaceProblems, subscribeToWorkspaceProblems } from '../services/problemService';
@@ -42,8 +45,12 @@ export const UserDashboardShell = () => {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportIsEmergency, setReportIsEmergency] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [chatbotOpen, setChatbotOpen] = useState(false);
 
-  const greetingName = userProfile?.fullName || currentUser?.displayName || 'Member';
+  const greetingName =
+    userProfile?.fullName ||
+    currentUser?.displayName ||
+    (currentUser?.email ? currentUser.email.split('@')[0] : 'Member');
 
   const wsId = currentWorkspace?.id;
 
@@ -161,6 +168,16 @@ export const UserDashboardShell = () => {
             }
             action={
               <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setChatbotOpen(true)}
+                  disabled={!currentWorkspace}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-hover)] hover:bg-[var(--primary)]/15 border border-[var(--glass-border)] hover:border-[var(--primary)]/40 text-xs font-semibold text-[var(--text)] transition-all cursor-pointer shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                  title="Open UNSAID AI Assistant"
+                >
+                  <UnsaidLogoMark size={20} animated={true} showShadow={false} />
+                  <span>AI Assistant</span>
+                </button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -191,6 +208,12 @@ export const UserDashboardShell = () => {
               </div>
             }
           />
+          {currentUser?.email && (
+            <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] pt-0.5 pl-1">
+              <span>Logged in as:</span>
+              <span className="font-semibold text-[var(--text)]">{currentUser.email}</span>
+            </div>
+          )}
         </div>
 
         {/* Real-time Workspace Join Request Notification Banner */}
@@ -419,6 +442,38 @@ export const UserDashboardShell = () => {
         onClose={() => setHistoryModalOpen(false)}
         workspace={currentWorkspace}
       />
+
+      {/* User AI Chatbot Modal */}
+      <UserChatbotModal
+        isOpen={chatbotOpen}
+        onClose={() => setChatbotOpen(false)}
+        workspace={currentWorkspace}
+        userProfile={userProfile}
+        currentUser={currentUser}
+        onProblemSubmitted={handleProblemSubmitted}
+      />
+
+      {/* Floating AI Assistant Quick Trigger */}
+      {currentWorkspace && (
+        <aside
+          aria-label="AI Assistant Quick Access"
+          className="fixed bottom-24 right-5 sm:bottom-8 sm:right-8 z-30 flex items-center gap-2"
+        >
+          <button
+            type="button"
+            onClick={() => setChatbotOpen(true)}
+            className="group flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] border border-[var(--glass-border)] shadow-xl hover:shadow-2xl hover:border-[var(--primary)]/40 transition-all cursor-pointer backdrop-blur-xl"
+            title="Open UNSAID AI Assistant"
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[var(--cyan)]/25 to-[var(--primary)]/25 flex items-center justify-center p-0.5 shrink-0">
+              <UnsaidLogoMark size={28} animated={true} showShadow={false} />
+            </div>
+            <span className="text-xs font-semibold text-[var(--text)] group-hover:text-[var(--cyan)] transition-colors pr-1 whitespace-nowrap">
+              AI Assistant
+            </span>
+          </button>
+        </aside>
+      )}
     </PageContainer>
     </>
   );

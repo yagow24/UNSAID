@@ -9,10 +9,12 @@ import {
 } from 'lucide-react';
 
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useAuth } from '../hooks/useAuth';
 import { PageContainer } from '../components/layout/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { Avatar } from '../components/ui/Avatar';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { GenerateInviteModal } from '../components/workspace/GenerateInviteModal';
 import { WorkspaceRequestsModal } from '../components/workspace/WorkspaceRequestsModal';
@@ -28,6 +30,7 @@ import { subscribeToWorkspaceProblems } from '../services/problemService';
  * Connects directly to Firestore problems scoped strictly by current workspace ID.
  */
 export const AdminDashboardShell = () => {
+  const { currentUser, userProfile } = useAuth();
   const { currentWorkspace, pendingRequests, pendingRequestsCount } = useWorkspace();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
@@ -150,6 +153,50 @@ export const AdminDashboardShell = () => {
         }
       />
 
+      {/* Administrator Profile Banner */}
+      {currentUser && (
+        <div className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs shadow-sm flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Avatar
+              name={userProfile?.fullName || currentUser?.displayName || currentUser?.email || 'Admin'}
+              src={
+                userProfile?.avatarPreference === 'initials'
+                  ? null
+                  : userProfile?.avatarUrl || currentUser?.photoURL
+              }
+              size="md"
+              isOnline={true}
+            />
+            <div className="flex flex-col text-left leading-tight">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-sm text-[var(--text)]">
+                  {userProfile?.fullName || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Administrator')}
+                </span>
+                <Badge variant="cyan" size="xs">
+                  Workspace Administrator
+                </Badge>
+              </div>
+              {currentUser?.email && (
+                <span className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
+                  {currentUser.email}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+              Session Verified
+            </span>
+            <span>•</span>
+            <span className="text-[var(--text-secondary)] font-medium">
+              {currentWorkspace?.name || 'Workspace Manager'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Real-time Join Requests Alert Banner for Admin */}
       {pendingRequestsCount > 0 && (
         <GlassCard
@@ -236,7 +283,7 @@ export const AdminDashboardShell = () => {
             </Button>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Powered by Gemini 2.5 Flash
+            Automated Operational Insights
           </p>
         </GlassCard>
 

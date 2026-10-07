@@ -13,6 +13,7 @@ export const UnsaidLogoMark = ({
   className = '',
   showShadow = true,
   animated = true,
+  animationMode = 'dance', // 'dance' | 'thinking'
   alt = 'UNSAID',
 }) => {
   const rawId = useId();
@@ -210,6 +211,142 @@ export const UnsaidLogoMark = ({
               100% { opacity: 0; }
             }
 
+            /* 5. AI THINKING ANIMATION IN THE FACIAL EXPRESSION: Quizzical eyebrow raise, thoughtful squint, upward glance & pursed 'Hmm...' mouth */
+            @keyframes unsaid-thinking-body-${id} {
+              0%, 100% {
+                transform: translateY(0px) rotate(0deg) scale(1, 1);
+              }
+              /* Inquisitive head tilt */
+              18%, 32% {
+                transform: translateY(-8px) rotate(-4.5deg) scale(1.02, 1);
+              }
+              /* Gentle bob and shift */
+              46%, 60% {
+                transform: translateY(-13px) rotate(3deg) scale(1.01, 1.01);
+              }
+              /* Deep analytical concentration */
+              72%, 82% {
+                transform: translateY(-4px) rotate(-1.5deg) scale(1.03, 0.98);
+              }
+              /* Eureka rebound */
+              88% {
+                transform: translateY(-2px) rotate(0.5deg) scale(0.99, 1.02);
+              }
+            }
+
+            /* Left Eye: Raises up inquisitively like a quizzical eyebrow, then scans up-left with right eye, then squints in deep calculation */
+            @keyframes unsaid-thinking-eye-left-${id} {
+              0% {
+                transform: scale(1, 1) translateY(0) translateX(0) rotate(0deg);
+              }
+              /* Phase 1: Raised inquisitive brow / open wide pondering ("Hmm?") */
+              16%, 32% {
+                transform: scale(1.06, 1.14) translateY(-20px) translateX(6px) rotate(-4deg);
+              }
+              /* Phase 2: Glancing upward together to upper-left */
+              46%, 60% {
+                transform: scale(0.96, 0.9) translateY(-26px) translateX(-14px) rotate(0deg);
+              }
+              /* Phase 3: Focused analytical squint / processing */
+              70%, 80% {
+                transform: scale(1.1, 0.44) translateY(6px) translateX(0) rotate(0deg);
+              }
+              /* Phase 4: Eureka realization blink and pop */
+              84% {
+                transform: scale(1, 0.08) translateY(0);
+              }
+              88% {
+                transform: scale(1.05, 1.18) translateY(-6px);
+              }
+              94%, 100% {
+                transform: scale(1, 1) translateY(0) translateX(0) rotate(0deg);
+              }
+            }
+
+            /* Right Eye: Squints into a deep questioning slit, then scans up-left, then analytical squint */
+            @keyframes unsaid-thinking-eye-right-${id} {
+              0% {
+                transform: scale(1, 1) translateY(0) translateX(0) rotate(0deg);
+              }
+              /* Phase 1: Quizzical questioning squint slit! */
+              16%, 32% {
+                transform: scale(0.94, 0.46) translateY(10px) translateX(4px) rotate(6deg);
+              }
+              /* Phase 2: Glancing upward together with left eye to upper-left */
+              46%, 60% {
+                transform: scale(0.96, 0.9) translateY(-26px) translateX(-14px) rotate(0deg);
+              }
+              /* Phase 3: Focused analytical squint / processing */
+              70%, 80% {
+                transform: scale(1.1, 0.44) translateY(6px) translateX(0) rotate(0deg);
+              }
+              /* Phase 4: Eureka realization blink and pop */
+              84% {
+                transform: scale(1, 0.08) translateY(0);
+              }
+              88% {
+                transform: scale(1.05, 1.18) translateY(-6px);
+              }
+              94%, 100% {
+                transform: scale(1, 1) translateY(0) translateX(0) rotate(0deg);
+              }
+            }
+
+            /* Mouth: The classic pursed, tilted 'Hmm...' thinking expression */
+            @keyframes unsaid-thinking-mouth-${id} {
+              0% {
+                transform: translateX(0) translateY(0) rotate(0deg) scale(1, 1);
+              }
+              /* Phase 1: The 'Hmm...' smirk — shifts right, tilts up on the right corner, pursed! */
+              16%, 32% {
+                transform: translateX(22px) translateY(-12px) rotate(10deg) scale(0.82, 1.12);
+              }
+              /* Phase 2: Concentrated smaller thought oval */
+              46%, 60% {
+                transform: translateX(0px) translateY(4px) rotate(0deg) scale(0.64, 1.22);
+              }
+              /* Phase 3: Murmuring / calculation tilt to left corner */
+              70%, 80% {
+                transform: translateX(-16px) translateY(-6px) rotate(-8deg) scale(0.84, 1.08);
+              }
+              /* Phase 4: Relaxes into gentle knowing curve on solution find */
+              88%, 95% {
+                transform: translateX(0) translateY(-2px) rotate(2deg) scale(1.02, 0.98);
+              }
+              100% {
+                transform: translateX(0) translateY(0) rotate(0deg) scale(1, 1);
+              }
+            }
+
+            @keyframes unsaid-thinking-halo-ring-${id} {
+              0%, 100% {
+                transform: scale(0.95) rotate(0deg);
+                opacity: 0.3;
+              }
+              50% {
+                transform: scale(1.06) rotate(180deg);
+                opacity: 0.75;
+              }
+            }
+
+            @keyframes unsaid-thought-dot-1-${id} {
+              0%, 100% { opacity: 0.2; transform: translateY(0px) scale(0.85); }
+              30% { opacity: 1; transform: translateY(-8px) scale(1.15); }
+              60% { opacity: 0.6; transform: translateY(-4px) scale(0.95); }
+            }
+
+            @keyframes unsaid-thought-dot-2-${id} {
+              0%, 100% { opacity: 0.3; transform: translateY(0px) scale(0.85); }
+              45% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+              75% { opacity: 0.5; transform: translateY(-5px) scale(0.95); }
+            }
+
+            @keyframes unsaid-thought-dot-3-${id} {
+              0%, 100% { opacity: 0.25; transform: translateY(0px) scale(0.85); }
+              60% { opacity: 1; transform: translateY(-12px) scale(1.25); }
+              85% { opacity: 0.7; transform: translateY(-6px) scale(1); }
+            }
+
             .unsaid-jump-body-${id} {
               transform-origin: 256px 256px;
               animation: unsaid-pet-jump-dance-${id} 4.6s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
@@ -220,6 +357,11 @@ export const UnsaidLogoMark = ({
               transform: translateY(-8px) scale(1.08);
             }
 
+            .unsaid-thinking-body-${id} {
+              transform-origin: 256px 256px;
+              animation: unsaid-thinking-body-${id} 3.6s infinite ease-in-out;
+            }
+
             .unsaid-eye-left-${id},
             .unsaid-eye-right-${id} {
               transform-box: fill-box;
@@ -227,10 +369,28 @@ export const UnsaidLogoMark = ({
               animation: unsaid-pet-eyes-${id} 4.6s infinite ease-in-out;
             }
 
+            .unsaid-thinking-eye-left-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thinking-eye-left-${id} 3.6s infinite ease-in-out;
+            }
+
+            .unsaid-thinking-eye-right-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thinking-eye-right-${id} 3.6s infinite ease-in-out;
+            }
+
             .unsaid-mouth-neutral-${id} {
               transform-box: fill-box;
               transform-origin: 50% 50%;
               animation: unsaid-pet-mouth-neutral-${id} 4.6s infinite ease-in-out;
+            }
+
+            .unsaid-thinking-mouth-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thinking-mouth-${id} 3.6s infinite cubic-bezier(0.4, 0, 0.2, 1);
             }
 
             .unsaid-mouth-smile-${id} {
@@ -250,12 +410,36 @@ export const UnsaidLogoMark = ({
               transform-origin: 50% 50%;
               animation: unsaid-pet-bling-cheek-${id} 4.6s infinite ease-out;
             }
+
+            .unsaid-thinking-halo-ring-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thinking-halo-ring-${id} 3.6s infinite ease-in-out;
+            }
+
+            .unsaid-thought-dot-1-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thought-dot-1-${id} 3.6s infinite ease-in-out;
+            }
+
+            .unsaid-thought-dot-2-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thought-dot-2-${id} 3.6s infinite ease-in-out;
+            }
+
+            .unsaid-thought-dot-3-${id} {
+              transform-box: fill-box;
+              transform-origin: 50% 50%;
+              animation: unsaid-thought-dot-3-${id} 3.6s infinite ease-in-out;
+            }
           `}</style>
         )}
       </defs>
 
-      {/* Jumping & Dancing Pet Body */}
-      <g className={animated ? `unsaid-jump-body-${id}` : ''}>
+      {/* Pet Body (Jumping & Dancing or Thoughtful Thinking) */}
+      <g className={animated ? (animationMode === 'thinking' ? `unsaid-thinking-body-${id}` : `unsaid-jump-body-${id}`) : ''}>
         {/* Squircle Canvas */}
         <rect width="512" height="512" rx="116" fill={`url(#${bgGradId})`} />
 
@@ -263,7 +447,7 @@ export const UnsaidLogoMark = ({
         <g filter={`url(#${depthFilterId})`}>
           {/* Left Eye Capsule */}
           <rect
-            className={animated ? `unsaid-eye-left-${id}` : ''}
+            className={animated ? (animationMode === 'thinking' ? `unsaid-thinking-eye-left-${id}` : `unsaid-eye-left-${id}`) : ''}
             x="106"
             y="138"
             width="56"
@@ -274,7 +458,7 @@ export const UnsaidLogoMark = ({
 
           {/* Right Eye Capsule */}
           <rect
-            className={animated ? `unsaid-eye-right-${id}` : ''}
+            className={animated ? (animationMode === 'thinking' ? `unsaid-thinking-eye-right-${id}` : `unsaid-eye-right-${id}`) : ''}
             x="350"
             y="138"
             width="56"
@@ -283,9 +467,9 @@ export const UnsaidLogoMark = ({
             fill={`url(#${pillGradId})`}
           />
 
-          {/* Neutral Mouth Capsule (visible when dancing & resting) */}
+          {/* Neutral / Concentrated Mouth Capsule */}
           <rect
-            className={animated ? `unsaid-mouth-neutral-${id}` : ''}
+            className={animated ? (animationMode === 'thinking' ? `unsaid-thinking-mouth-${id}` : `unsaid-mouth-neutral-${id}`) : ''}
             x="182"
             y="327"
             width="148"
@@ -294,8 +478,8 @@ export const UnsaidLogoMark = ({
             fill={`url(#${pillGradId})`}
           />
 
-          {/* Joyful Beaming Smile Arc (appears during the high jump!) */}
-          {animated && (
+          {/* Joyful Beaming Smile Arc (appears during the high jump dance mode) */}
+          {animated && animationMode === 'dance' && (
             <path
               className={`unsaid-mouth-smile-${id}`}
               d="M 184 332 Q 256 394 328 332"
@@ -307,7 +491,7 @@ export const UnsaidLogoMark = ({
           )}
 
           {/* High Jump Celebration Sparkle (Top Right) */}
-          {animated && (
+          {animated && animationMode === 'dance' && (
             <path
               className={`unsaid-sparkle-top-${id}`}
               d="M 406 120 Q 406 148 378 148 Q 406 148 406 176 Q 406 148 434 148 Q 406 148 406 120 Z"
@@ -317,13 +501,59 @@ export const UnsaidLogoMark = ({
           )}
 
           {/* High Jump Cheek Glow Sparkle (Left) */}
-          {animated && (
+          {animated && animationMode === 'dance' && (
             <path
               className={`unsaid-sparkle-cheek-${id}`}
               d="M 106 348 Q 106 362 92 362 Q 106 362 106 376 Q 106 362 120 362 Q 106 362 106 348 Z"
               fill="#ffffff"
               filter="drop-shadow(0 0 6px rgba(255, 255, 255, 0.85))"
             />
+          )}
+
+          {/* AI Thinking Mode Cognitive Halo Ring & Ascending Thought Orbs */}
+          {animated && animationMode === 'thinking' && (
+            <g>
+              {/* Pulsing Thought Halo Arc above head */}
+              <ellipse
+                cx="256"
+                cy="76"
+                rx="160"
+                ry="34"
+                fill="none"
+                stroke={`url(#${pillGradId})`}
+                strokeWidth="10"
+                strokeDasharray="28 18"
+                opacity="0.85"
+                filter="drop-shadow(0 0 14px rgba(147, 197, 253, 0.9))"
+                className={`unsaid-thinking-halo-ring-${id}`}
+              />
+
+              {/* 3 Thoughtful AI Bubbles (Drifting up to the right) */}
+              <circle
+                cx="396"
+                cy="82"
+                r="14"
+                fill="#ffffff"
+                filter="drop-shadow(0 0 8px #93c5fd)"
+                className={`unsaid-thought-dot-1-${id}`}
+              />
+              <circle
+                cx="438"
+                cy="48"
+                r="18"
+                fill="#ffffff"
+                filter="drop-shadow(0 0 10px #c084fc)"
+                className={`unsaid-thought-dot-2-${id}`}
+              />
+              <circle
+                cx="482"
+                cy="14"
+                r="22"
+                fill="#ffffff"
+                filter="drop-shadow(0 0 12px #e879f9)"
+                className={`unsaid-thought-dot-3-${id}`}
+              />
+            </g>
           )}
         </g>
       </g>

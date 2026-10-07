@@ -9,12 +9,39 @@ from dotenv import load_dotenv
 
 # Search for .env in project root and backend dir
 ROOT_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT_DIR / ".env")
-load_dotenv(Path(__file__).resolve().parent / ".env")
+BACKEND_DIR = Path(__file__).resolve().parent
 
-# Gemini AI Settings
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+_backend_env_mtime = 0.0
+
+def reload_env():
+    """Reloads environment variables from root and backend .env files if modified."""
+    global _backend_env_mtime
+    backend_env_file = BACKEND_DIR / ".env"
+    current_mtime = backend_env_file.stat().st_mtime if backend_env_file.exists() else 0.0
+    if current_mtime != _backend_env_mtime:
+        if (ROOT_DIR / ".env").exists():
+            load_dotenv(ROOT_DIR / ".env", override=False)
+        if backend_env_file.exists():
+            load_dotenv(backend_env_file, override=True)
+        _backend_env_mtime = current_mtime
+
+# Initial load
+reload_env()
+
+def get_gemini_api_key() -> str:
+    """Dynamically retrieves GEMINI_API_KEY, reloading .env if modified."""
+    reload_env()
+    return os.getenv("GEMINI_API_KEY", "").strip()
+
+def get_gemini_model() -> str:
+    """Dynamically retrieves GEMINI_MODEL, defaulting to gemini-2.5-flash-lite."""
+    reload_env()
+    return os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
+
+
+# Static backward-compatibility exports
+GEMINI_API_KEY = get_gemini_api_key()
+GEMINI_MODEL = get_gemini_model()
 
 # Firebase Settings
 FIREBASE_PROJECT_ID = (
@@ -30,4 +57,6 @@ HOST = os.getenv("HOST", "0.0.0.0")
 
 def is_gemini_configured() -> bool:
     """Returns True if a non-empty, non-placeholder Gemini API key is configured."""
-    return bool(GEMINI_API_KEY and not GEMINI_API_KEY.startswith("your_"))
+    key = get_gemini_api_key()
+    return bool(key and not key.startswith("your_") and key != "configured locally")
+

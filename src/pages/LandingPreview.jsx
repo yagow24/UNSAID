@@ -31,7 +31,7 @@ import { APP_CONFIG } from '../config/appConfig';
 export const LandingPreview = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, currentUser } = useAuth();
   const { getInviteByToken } = useWorkspace();
 
   // Invite Entry Interactive State
@@ -150,7 +150,13 @@ export const LandingPreview = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">Active Session Found</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                  {currentUser?.email && (
+                    <div className="mt-1.5 px-3 py-1 rounded-full bg-[var(--surface)] border border-[var(--glass-border)] inline-block">
+                      <span className="text-xs text-[var(--text-muted)]">Signed in as: </span>
+                      <strong className="text-xs text-[var(--cyan)] font-mono">{currentUser.email}</strong>
+                    </div>
+                  )}
+                  <p className="text-xs text-[var(--text-muted)] mt-1.5">
                     You are currently authenticated as an {isAdmin ? 'Administrator' : 'Organization Member'}.
                   </p>
                 </div>

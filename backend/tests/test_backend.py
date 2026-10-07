@@ -25,7 +25,7 @@ class BackendTestCase(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data.get("success"))
-        self.assertEqual(data.get("model"), "gemini-2.5-flash")
+        self.assertTrue(data.get("model", "").startswith("gemini-"))
 
     def test_unauthenticated_request_rejected(self):
         """Test that POST /api/ai/analyze-problem without token returns 401."""
@@ -93,11 +93,12 @@ class BackendTestCase(unittest.TestCase):
         self.assertEqual(data.get("error", {}).get("code"), "VALIDATION_FAILED")
 
     @patch("backend.middleware.auth_middleware.verify_token")
-    @patch("backend.routes.ai_routes.is_gemini_configured")
+    @patch("backend.services.gemini_service.is_gemini_configured")
     def test_gemini_not_configured_graceful_error(self, mock_cfg, mock_verify):
         """Test that unconfigured Gemini key returns 503 with user-friendly message."""
         mock_verify.return_value = {"uid": "user_123", "email": "test@unsaid.org"}
         mock_cfg.return_value = False
+
         res = self.client.post(
             "/api/ai/analyze-problem",
             headers={"Authorization": "Bearer mock_valid_token"},
@@ -188,5 +189,64 @@ class BackendTestCase(unittest.TestCase):
         self.assertIn("topIssues", summary)
         self.assertIn("recommendedActions", summary)
 
+    @patch("backend.middleware.auth_middleware.verify_token")
+    @patch("backend.routes.ai_routes.test_gemini_connection")
+    def test_connection_diagnostic_endpoint(self, mock_test_conn, mock_verify):
+        """Test POST /api/ai/test-connection returns diagnostic status."""
+        mock_verify.return_value = {"uid": "admin_123", "email": "admin@unsaid.org"}
+        mock_test_conn.return_value = {
+            "success": True,
+            "model": "gemini-2.5-flash",
+            "response": {"greeting": "Hello", "status": "online"},
+        }
+
+        res = self.client.post(
+            "/api/ai/test-connection",
+            headers={"Authorization": "Bearer mock_valid_token"},
+        )
+        self.assertEqual(res.status_code, 200)
+    @patch("backend.middleware.auth_middleware.verify_token")
+    @patch("backend.routes.ai_routes.generate_user_chat_response")
+    def test_user_chat_endpoint_success(self, mock_chat, mock_verify):
+        """Test POST /api/ai/chat returns successful Gemini response."""
+        mock_verify.return_value = {"uid": "user_456", "email": "user@unsaid.org"}
+        mock_chat.return_value = {
+            "reply": "I can help you report issues or check query status.",
+            "model": "gemini-2.5-flash-lite",
+        }
+
+        res = self.client.post(
+            "/api/ai/chat",
+            headers={"Authorization": "Bearer mock_valid_token"},
+            json={
+                "message": "Hello, what can you help me with?",
+                "workspaceId": "ws_test",
+                "workspaceName": "Workspace Test",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("reply"), "I can help you report issues or check query status.")
+        self.assertEqual(data.get("model"), "gemini-2.5-flash-lite")
+
+    @patch("backend.middleware.auth_middleware.verify_token")
+    def test_user_chat_missing_message_rejected(self, mock_verify):
+        """Test POST /api/ai/chat returns 400 when message is empty."""
+        mock_verify.return_value = {"uid": "user_456", "email": "user@unsaid.org"}
+        res = self.client.post(
+            "/api/ai/chat",
+            headers={"Authorization": "Bearer mock_valid_token"},
+            json={
+                "message": "   ",
+                "workspaceId": "ws_test",
+            },
+        )
+        self.assertEqual(res.status_code, 400)
+        data = res.get_json()
+        self.assertFalse(data.get("success"))
+        self.assertEqual(data.get("error", {}).get("code"), "VALIDATION_FAILED")
+
 if __name__ == "__main__":
     unittest.main()
+

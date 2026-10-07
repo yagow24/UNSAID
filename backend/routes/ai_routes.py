@@ -5,12 +5,14 @@ Handles authenticated, workspace-isolated requests to Gemini AI.
 
 import logging
 from flask import Blueprint, request, jsonify, g
-from backend.config import GEMINI_MODEL, is_gemini_configured
+from backend.config import get_gemini_model, is_gemini_configured
 from backend.middleware.auth_middleware import require_auth, require_workspace
 from backend.services.gemini_service import (
     analyze_problem,
     generate_admin_summary,
     find_similar_issue,
+    generate_user_chat_response,
+    test_gemini_connection,
     GeminiNotConfiguredError,
     GeminiAPIError,
 )
@@ -25,8 +27,54 @@ def get_status():
         "success": True,
         "status": "online",
         "aiConfigured": is_gemini_configured(),
-        "model": GEMINI_MODEL,
+        "model": get_gemini_model(),
     })
+
+@ai_bp.route("/test-connection", methods=["POST"])
+@require_auth
+def handle_test_connection():
+    """
+    POST /api/ai/test-connection
+    Protected diagnostic endpoint that executes ONE real Gemini test request:
+    'Return JSON with a short greeting and a status field.'
+    Does NOT return any secret API keys.
+    """
+    try:
+        result = test_gemini_connection()
+        return jsonify({
+            "success": True,
+            "result": result,
+        })
+    except GeminiNotConfiguredError as err:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "AI_NOT_CONFIGURED",
+                "category": "not_configured",
+                "statusCode": 503,
+                "message": err.safe_reason,
+            },
+        }), 503
+    except GeminiAPIError as err:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": err.category.upper(),
+                "category": err.category,
+                "statusCode": err.status_code,
+                "message": err.safe_reason,
+            },
+        }), err.status_code
+    except Exception as err:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "SERVER_ERROR",
+                "category": "sdk_error",
+                "statusCode": 500,
+                "message": "Internal error verifying Gemini connectivity.",
+            },
+        }), 500
 
 @ai_bp.route("/analyze-problem", methods=["POST"])
 @require_auth
@@ -105,19 +153,25 @@ def handle_analyze_problem():
             "success": False,
             "error": {
                 "code": "AI_NOT_CONFIGURED",
+                "category": "not_configured",
+                "statusCode": 503,
                 "message": "AI is temporarily unavailable. You can still submit your problem.",
+                "details": err.safe_reason,
             },
         }), 503
 
     except GeminiAPIError as err:
-        logger.warning("Gemini API error during analyze-problem: %s", err)
+        logger.warning("Gemini API error during analyze-problem: category=%s reason=%s", err.category, err.safe_reason)
         return jsonify({
             "success": False,
             "error": {
-                "code": "AI_UNAVAILABLE",
+                "code": err.category.upper(),
+                "category": err.category,
+                "statusCode": err.status_code,
                 "message": "AI is temporarily unavailable. You can still submit your problem.",
+                "details": err.safe_reason,
             },
-        }), 503
+        }), err.status_code
 
     except Exception as err:
         logger.error("Unexpected error in handle_analyze_problem: %s", err)
@@ -125,6 +179,8 @@ def handle_analyze_problem():
             "success": False,
             "error": {
                 "code": "SERVER_ERROR",
+                "category": "unknown",
+                "statusCode": 500,
                 "message": "AI analysis is temporarily unavailable. You can proceed directly.",
             },
         }), 500
@@ -169,26 +225,36 @@ def handle_admin_summary():
             "success": False,
             "error": {
                 "code": "AI_NOT_CONFIGURED",
+                "category": "not_configured",
+                "statusCode": 503,
                 "message": "AI summary service is temporarily unavailable.",
+                "details": err.safe_reason,
             },
         }), 503
     except GeminiAPIError as err:
+        logger.warning("Gemini API error during admin-summary: category=%s reason=%s", err.category, err.safe_reason)
         return jsonify({
             "success": False,
             "error": {
-                "code": "AI_UNAVAILABLE",
+                "code": err.category.upper(),
+                "category": err.category,
+                "statusCode": err.status_code,
                 "message": "AI summary service is temporarily unavailable.",
+                "details": err.safe_reason,
             },
-        }), 503
+        }), err.status_code
     except Exception as err:
         logger.error("Unexpected error in handle_admin_summary: %s", err)
         return jsonify({
             "success": False,
             "error": {
                 "code": "SERVER_ERROR",
+                "category": "unknown",
+                "statusCode": 500,
                 "message": "Failed to generate AI summary.",
             },
         }), 500
+
 
 @ai_bp.route("/find-similar", methods=["POST"])
 @require_auth
@@ -231,3 +297,93 @@ def handle_find_similar():
             "success": True,
             "result": {"hasSimilarProblem": False, "similarProblems": []},
         })
+
+@ai_bp.route("/chat", methods=["POST"])
+@require_auth
+@require_workspace
+def handle_user_chat():
+    """
+    POST /api/ai/chat
+    Conversational assistant for regular workspace members.
+    Receives user message, optional conversation history, and workspace context.
+    Calls REAL Google Gemini API and returns generated reply.
+    """
+    body = request.get_json(silent=True) or {}
+    message = str(body.get("message", "")).strip()
+    history = body.get("history", [])
+    workspace_name = str(body.get("workspaceName", "Workspace")).strip()
+
+    if not message:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "VALIDATION_FAILED",
+                "message": "Message text is required.",
+            },
+        }), 400
+
+    if len(message) > 4000:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "PAYLOAD_TOO_LARGE",
+                "message": "Message exceeds maximum allowed length (4000 characters).",
+            },
+        }), 400
+
+    logger.info(
+        "AI user-chat started: user=%s, workspace=%s, msg_len=%d",
+        g.user.get("uid"),
+        g.workspace_id,
+        len(message),
+    )
+
+    try:
+        result = generate_user_chat_response(
+            message=message,
+            history=history if isinstance(history, list) else None,
+            workspace_name=workspace_name,
+        )
+        logger.info("AI user-chat success for user=%s", g.user.get("uid"))
+        return jsonify({
+            "success": True,
+            "reply": result["reply"],
+            "model": result["model"],
+        })
+
+    except GeminiNotConfiguredError as err:
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "AI_NOT_CONFIGURED",
+                "category": "not_configured",
+                "statusCode": 503,
+                "message": "AI assistant is temporarily unavailable.",
+                "details": err.safe_reason,
+            },
+        }), 503
+
+    except GeminiAPIError as err:
+        logger.warning("Gemini API error during user-chat: category=%s reason=%s", err.category, err.safe_reason)
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": err.category.upper(),
+                "category": err.category,
+                "statusCode": err.status_code,
+                "message": err.safe_reason,
+                "details": err.safe_reason,
+            },
+        }), err.status_code
+
+    except Exception as err:
+        logger.error("Unexpected error in handle_user_chat: %s", err)
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "SERVER_ERROR",
+                "category": "unknown",
+                "statusCode": 500,
+                "message": "An error occurred while generating the response.",
+            },
+        }), 500

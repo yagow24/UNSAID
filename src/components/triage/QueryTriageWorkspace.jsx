@@ -1011,7 +1011,7 @@ export const QueryTriageWorkspace = ({
                     </span>
                     {aiTriageAnalysis && (
                       <Badge variant="cyan" size="sm">
-                        {aiTriageAnalysis.model || 'gemini-2.5-flash'}
+                        AI Assessment
                       </Badge>
                     )}
                   </div>
@@ -1033,6 +1033,19 @@ export const QueryTriageWorkspace = ({
                 {/* If analysis is available */}
                 {aiTriageAnalysis && (
                   <div className="space-y-3 pt-1 text-xs">
+                    {/* User AI Escalation Banner */}
+                    {(aiTriageAnalysis.escalatedFromAI || selectedProblem?.aiAnalysis?.escalatedFromAI) && (
+                      <div className="p-3 rounded-xl bg-[var(--danger)]/10 border border-[var(--danger)]/30 flex items-center justify-between flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-[var(--danger)] font-medium">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>Escalated from User AI: The user attempted the AI solution below, but it did not resolve their issue.</span>
+                        </div>
+                        <Badge variant="high" size="sm">
+                          AI Escalation
+                        </Badge>
+                      </div>
+                    )}
+
                     {/* Priority Comparison Notice */}
                     <div className="p-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] flex items-center justify-between flex-wrap gap-2">
                       <span className="text-[11px] text-[var(--text-muted)]">
@@ -1128,6 +1141,11 @@ export const QueryTriageWorkspace = ({
                   <span className="font-medium text-[var(--text)] truncate block mt-0.5">
                     {selectedProblem.authorName || selectedProblem.authorEmail || 'Member'}
                   </span>
+                  {selectedProblem.authorEmail && (
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono truncate block mt-0.5">
+                      {selectedProblem.authorEmail}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block">

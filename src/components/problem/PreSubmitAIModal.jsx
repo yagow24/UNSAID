@@ -36,42 +36,40 @@ export const PreSubmitAIModal = ({
       ? `${problemDraft.workspaceId || ''}_${problemDraft.title || ''}_${problemDraft.category || ''}`
       : null;
 
-  useEffect(() => {
-    let active = true;
+  const triggerFetch = React.useCallback(() => {
+    if (!problemDraft || !problemDraft.workspaceId) return;
 
-    if (isOpen && problemDraft && currentKey && resolvedKey !== currentKey) {
-      fetchAIResolution({
-        workspaceId: problemDraft.workspaceId,
-        title: problemDraft.title,
-        description: problemDraft.description,
-        category: problemDraft.category,
-        subIssue: problemDraft.subIssue,
-        workaround: problemDraft.workaround,
-        isEmergency: problemDraft.isEmergency,
-        candidateProblems,
+    fetchAIResolution({
+      workspaceId: problemDraft.workspaceId,
+      title: problemDraft.title,
+      description: problemDraft.description,
+      category: problemDraft.category,
+      subIssue: problemDraft.subIssue,
+      workaround: problemDraft.workaround,
+      isEmergency: problemDraft.isEmergency,
+      candidateProblems: candidateProblems || [],
+    })
+      .then((result) => {
+        setResolutionState(result);
+        setResolvedKey(currentKey);
       })
-        .then((result) => {
-          if (active) {
-            setResolutionState(result);
-            setResolvedKey(currentKey);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setResolutionState({
-              available: false,
-              message: 'AI is temporarily unavailable. You can still submit your problem.',
-              analysis: null,
-            });
-            setResolvedKey(currentKey);
-          }
+      .catch((err) => {
+        setResolutionState({
+          available: false,
+          message: err?.message || 'AI is temporarily unavailable. You can still submit your problem.',
+          analysis: null,
         });
-    }
+        setResolvedKey(currentKey);
+      });
+  }, [problemDraft, currentKey, candidateProblems]);
 
-    return () => {
-      active = false;
-    };
-  }, [isOpen, problemDraft, currentKey, resolvedKey, candidateProblems]);
+
+  useEffect(() => {
+    if (isOpen && problemDraft && currentKey && resolvedKey !== currentKey) {
+      triggerFetch();
+    }
+  }, [isOpen, problemDraft, currentKey, resolvedKey, triggerFetch]);
+
 
   if (!isOpen || !problemDraft) return null;
 
@@ -81,7 +79,15 @@ export const PreSubmitAIModal = ({
 
   const handlePublishWithAI = () => {
     if (onPublish) {
-      onPublish(analysis || null);
+      const enrichedAnalysis = analysis
+        ? {
+            ...analysis,
+            userSatisfied: false,
+            escalatedFromAI: true,
+            userFeedback: "This didn't solve my problem",
+          }
+        : null;
+      onPublish(enrichedAnalysis);
     }
   };
 
@@ -106,13 +112,13 @@ export const PreSubmitAIModal = ({
             <div>
               <p className="text-sm font-semibold text-[var(--text)]">Analyzing Problem...</p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Connecting to Gemini AI to generate immediate workarounds and triage priority.
+                Analyzing query to generate immediate workarounds and triage priority.
               </p>
             </div>
           </div>
         )}
 
-        {/* Real Gemini AI Analysis Available */}
+        {/* AI Analysis Available */}
         {!loading && isAvailable && (
           <div className="space-y-4">
             {/* Header Status & Confidence */}
@@ -131,9 +137,9 @@ export const PreSubmitAIModal = ({
                     {Math.round(analysis.confidence * 100)}% confidence
                   </Badge>
                 )}
-                <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                  {analysis.model || 'gemini-2.5-flash'}
-                </span>
+                <Badge variant="neutral" size="sm">
+                  AI Analysis
+                </Badge>
               </div>
             </div>
 
@@ -325,7 +331,7 @@ export const PreSubmitAIModal = ({
                 icon={<CheckCircle className="w-4 h-4 text-[var(--success)]" />}
                 className="w-full sm:w-auto"
               >
-                This solved my problem
+                ✓ This solved my problem
               </Button>
 
               <Button
@@ -338,7 +344,7 @@ export const PreSubmitAIModal = ({
                 icon={<ArrowRight className="w-4 h-4" />}
                 className="w-full sm:w-auto"
               >
-                I still need help
+                ✕ This didn't solve my problem
               </Button>
             </>
           ) : (

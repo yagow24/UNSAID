@@ -18,6 +18,7 @@ import {
   ChevronUp,
   Award,
   Lock,
+  Lightbulb,
 } from 'lucide-react';
 import { ModalShell } from '../ui/ModalShell';
 import { Button } from '../ui/Button';
@@ -665,7 +666,7 @@ export const ProblemDetailsModal = ({
             {problem.description}
           </p>
 
-          {problem.workaround && (
+          {problem.workaround && !problem.aiAnalysis && (
             <div className="p-3 rounded-xl bg-[var(--surface-hover)] border border-[var(--glass-border)] text-xs space-y-1">
               <span className="font-semibold text-[var(--text)] block text-[11px]">
                 💡 Proposed Workaround:
@@ -673,6 +674,32 @@ export const ProblemDetailsModal = ({
               <p className="text-[var(--text-muted)] text-[11px] leading-relaxed">
                 {problem.workaround}
               </p>
+            </div>
+          )}
+
+          {problem.aiAnalysis && (
+            <div className="p-3.5 rounded-xl bg-[var(--surface-hover)] border border-[var(--cyan)]/25 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-[var(--text)] flex items-center gap-1.5 text-[11px]">
+                  <Lightbulb className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                  AI Suggested Resolution Attempt:
+                </span>
+                {problem.aiAnalysis.escalatedFromAI && (
+                  <Badge variant="high" size="xs">
+                    Unresolved by AI
+                  </Badge>
+                )}
+              </div>
+              {problem.aiAnalysis.suggestedWorkaround && (
+                <p className="text-[var(--text-secondary)] text-[11px] leading-relaxed">
+                  {problem.aiAnalysis.suggestedWorkaround}
+                </p>
+              )}
+              {problem.aiAnalysis.userFeedback && (
+                <div className="text-[10px] text-[var(--text-muted)] italic">
+                  User feedback: "{problem.aiAnalysis.userFeedback}"
+                </div>
+              )}
             </div>
           )}
 
