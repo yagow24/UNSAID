@@ -103,9 +103,7 @@ def health_check():
         "model": get_gemini_model(),
         "vercelProject": os.environ.get("VERCEL_PROJECT_NAME", ""),
         "vercelEnv": os.environ.get("VERCEL_ENV", ""),
-        "vercelBranch": os.environ.get("VERCEL_GIT_COMMIT_REF", ""),
         "vercelCommit": (os.environ.get("VERCEL_GIT_COMMIT_SHA") or "")[:7],
-        "allEnvKeys": sorted(list(os.environ.keys())),
     })
 
 # Global error handlers
