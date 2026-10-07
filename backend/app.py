@@ -35,7 +35,7 @@ app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max payload
 # CORS setup
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},
+    resources={r"/*": {"origins": "*"}},
     methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -78,6 +78,22 @@ def check_rate_limit():
 # Register blueprints
 app.register_blueprint(ai_bp)
 
+class PrefixMiddleware:
+    """WSGI middleware ensuring /api prefix routes match whether Vercel strips or preserves the prefix."""
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path.startswith("/ai/") or path == "/ai":
+            environ["PATH_INFO"] = "/api" + path
+        elif path == "/health":
+            environ["PATH_INFO"] = "/api/health"
+        return self.wsgi_app(environ, start_response)
+
+app.wsgi_app = PrefixMiddleware(app.wsgi_app)
+
+@app.route("/health", methods=["GET"])
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({

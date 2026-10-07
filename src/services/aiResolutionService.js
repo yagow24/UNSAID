@@ -114,8 +114,10 @@ export const fetchAIResolution = async ({
 
     clearTimeout(timeoutId);
 
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = isJson ? await response.json().catch(() => ({})) : {};
       const code = errData?.error?.code || `HTTP_${response.status}`;
       const msg =
         errData?.error?.message ||
@@ -134,6 +136,15 @@ export const fetchAIResolution = async ({
       };
     }
 
+    if (!isJson) {
+      console.warn('[UNSAID AI] Backend endpoint returned non-JSON response.');
+      return {
+        available: false,
+        reason: 'BACKEND_NOT_CONFIGURED',
+        message: 'AI backend endpoint is not yet connected on this deployment.',
+        analysis: null,
+      };
+    }
 
     const data = await response.json();
 
@@ -242,8 +253,10 @@ export const fetchAdminAISummary = async ({
 
     clearTimeout(timeoutId);
 
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = isJson ? await response.json().catch(() => ({})) : {};
       const code = errData?.error?.code || `HTTP_${response.status}`;
       const msg =
         errData?.error?.message ||
@@ -257,6 +270,12 @@ export const fetchAdminAISummary = async ({
       };
     }
 
+    if (!isJson) {
+      return {
+        success: false,
+        error: 'AI backend endpoint is not yet connected on this deployment. Please verify backend deployment and environment variables.',
+      };
+    }
 
     const data = await response.json();
     return {
@@ -283,6 +302,8 @@ export const checkAIStatus = async () => {
       method: 'GET',
     });
     if (!res.ok) return { online: false, aiConfigured: false };
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    if (!isJson) return { online: false, aiConfigured: false };
     const data = await res.json();
     return {
       online: true,
@@ -350,8 +371,10 @@ export const sendUserChatMessage = async ({
 
     clearTimeout(timeoutId);
 
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = isJson ? await response.json().catch(() => ({})) : {};
       const code = errData?.error?.code || `HTTP_${response.status}`;
       const msg =
         errData?.error?.message ||
@@ -360,6 +383,13 @@ export const sendUserChatMessage = async ({
         success: false,
         error: msg,
         code,
+      };
+    }
+
+    if (!isJson) {
+      return {
+        success: false,
+        error: 'AI assistant is temporarily unavailable on this deployment. Please verify backend deployment and environment variables.',
       };
     }
 
