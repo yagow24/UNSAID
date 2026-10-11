@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   RotateCcw,
@@ -413,12 +414,39 @@ export const QueryTriageWorkspace = ({
   const userFeedback = qualityFeedbacks.find((f) => f.userId === currentUser?.uid)?.rating;
 
   // Handlers
-  const handleSelect = (prob) => {
-    setInternalSelectedId(prob.id);
-    setLocalProblemOverride(null);
-    setMobileDetailOpen(true);
-    if (onSelectProblem) onSelectProblem(prob);
-  };
+  const handleSelect = useCallback(
+    (prob) => {
+      setInternalSelectedId(prob.id);
+      setLocalProblemOverride(null);
+      setMobileDetailOpen(true);
+      if (onSelectProblem) onSelectProblem(prob);
+    },
+    [onSelectProblem]
+  );
+
+  const handleSelectById = useCallback(
+    (problemId) => {
+      if (!problemId) return;
+      const target = problems.find((p) => p.id === problemId);
+      if (target) {
+        handleSelect(target);
+      } else {
+        setInternalSelectedId(problemId);
+        setLocalProblemOverride(null);
+        setMobileDetailOpen(true);
+      }
+    },
+    [problems, handleSelect]
+  );
+
+  // Auto-select problem if linked via URL query param (?problem=...)
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const urlProbId = searchParams.get('problem');
+    if (urlProbId) {
+      handleSelectById(urlProbId);
+    }
+  }, [searchParams, handleSelectById]);
 
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
@@ -735,7 +763,7 @@ export const QueryTriageWorkspace = ({
                 <button
                   type="button"
                   onClick={() => {
-                    handleSelectProblem(latestAdminNotif.problemId);
+                    handleSelectById(latestAdminNotif.problemId);
                     markAsRead(latestAdminNotif.id);
                   }}
                   className="px-2.5 py-1 rounded-lg bg-[var(--primary)] text-white font-semibold text-[11px] hover:bg-[var(--primary-hover)] cursor-pointer"

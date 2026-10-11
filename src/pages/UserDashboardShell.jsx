@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   FileText,
   Clock,
@@ -34,6 +34,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { ProfileBadge } from '../components/profile/ProfileBadge';
 import { ProfileCompletionBanner } from '../components/profile/ProfileCompletionBanner';
 import { ProfileModal } from '../components/profile/ProfileModal';
+import { ProblemDetailsModal } from '../components/problem/ProblemDetailsModal';
 import { getEffectiveProfile } from '../services/profileService';
 import { getShiftStatus } from '../config/shiftConfig';
 import { getWorkspaceProblems, subscribeToWorkspaceProblems } from '../services/problemService';
@@ -51,6 +52,19 @@ export const UserDashboardShell = () => {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [chatbotOpen, setChatbotOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [selectedProblemDetails, setSelectedProblemDetails] = useState(null);
+
+  // Auto-inspect problem if linked via URL query param (?problem=...)
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const pId = searchParams.get('problem');
+    if (pId) {
+      const found = problems.find((p) => p.id === pId);
+      if (found) {
+        setSelectedProblemDetails(found);
+      }
+    }
+  }, [searchParams, problems]);
 
   const effectiveProfile = useMemo(() => {
     return getEffectiveProfile(userProfile, currentWorkspace?.id);
@@ -329,10 +343,28 @@ export const UserDashboardShell = () => {
                   size="sm"
                   onClick={async () => {
                     await markAsRead(latestUnreadNotif.id);
+                    if (latestUnreadNotif.problemId) {
+                      const prob = problems.find((p) => p.id === latestUnreadNotif.problemId);
+                      if (prob) setSelectedProblemDetails(prob);
+                    }
                   }}
                   className="text-xs font-semibold py-1.5 px-3 rounded-lg"
                 >
                   Inspect Resolution
+                </Button>
+              )}
+              {latestUnreadNotif.type !== 'request_approved' && latestUnreadNotif.type !== 'problem_resolved_verification' && latestUnreadNotif.problemId && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    await markAsRead(latestUnreadNotif.id);
+                    const prob = problems.find((p) => p.id === latestUnreadNotif.problemId);
+                    if (prob) setSelectedProblemDetails(prob);
+                  }}
+                  className="text-xs font-semibold py-1.5 px-3 rounded-lg"
+                >
+                  View Query
                 </Button>
               )}
               <Button
@@ -550,6 +582,24 @@ export const UserDashboardShell = () => {
         onClose={() => setProfileModalOpen(false)}
         isAdmin={false}
       />
+
+      {/* Problem Details Modal for Direct Notification Inspection */}
+      {selectedProblemDetails && (
+        <ProblemDetailsModal
+          isOpen={Boolean(selectedProblemDetails)}
+          onClose={() => setSelectedProblemDetails(null)}
+          problem={selectedProblemDetails}
+          workspace={currentWorkspace}
+          currentUser={currentUser}
+          allWorkspaceProblems={problems}
+          onProblemUpdated={(updated) => {
+            setProblems((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p))
+            );
+            setSelectedProblemDetails(updated);
+          }}
+        />
+      )}
     </PageContainer>
     </>
   );

@@ -273,7 +273,7 @@ export const createWorkspaceJoinRequest = async ({
     const adminNotificationRef = doc(collection(db, 'notifications'));
     const userNotificationRef = doc(collection(db, 'notifications'));
 
-    if (workspace?.createdBy && workspace.createdBy !== userId) {
+    if (workspace?.createdBy) {
       transaction.set(adminNotificationRef, {
         userId: workspace.createdBy,
         type: 'request_received',

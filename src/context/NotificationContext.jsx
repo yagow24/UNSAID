@@ -25,9 +25,9 @@ export const NotificationProvider = ({ children }) => {
 
   // Trigger an in-app visual toast banner
   const triggerToast = useCallback(
-    ({ title, message, type = 'general', workspaceName, notifId, actionUrl }) => {
+    ({ title, message, type = 'general', workspaceName, workspaceId, problemId, notifId, actionUrl }) => {
       const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const newToast = { id, title, message, type, workspaceName, notifId, actionUrl };
+      const newToast = { id, title, message, type, workspaceName, workspaceId, problemId, notifId, actionUrl };
 
       setToasts((prev) => [newToast, ...prev.slice(0, 3)]); // Keep max 4 toasts at once
 
@@ -77,6 +77,8 @@ export const NotificationProvider = ({ children }) => {
                 message: item.message,
                 type: item.type,
                 workspaceName: item.workspaceName,
+                workspaceId: item.workspaceId,
+                problemId: item.problemId,
                 notifId: item.id,
               });
             }
@@ -98,6 +100,8 @@ export const NotificationProvider = ({ children }) => {
                   message: item.message,
                   type: item.type,
                   workspaceName: item.workspaceName,
+                  workspaceId: item.workspaceId,
+                  problemId: item.problemId,
                   notifId: item.id,
                 });
               }

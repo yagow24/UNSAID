@@ -77,7 +77,8 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
       await switchWorkspace(item.workspaceId);
     }
     onClose();
-    navigate('/app');
+    const probParam = item.problemId ? `?problem=${item.problemId}` : '';
+    navigate(`/app${probParam}`);
   };
 
   const handleNavigateAdmin = async (item) => {
@@ -88,7 +89,8 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
       await switchWorkspace(item.workspaceId);
     }
     onClose();
-    navigate('/admin');
+    const probParam = item.problemId ? `?problem=${item.problemId}` : '';
+    navigate(`/admin${probParam}`);
   };
 
   const handleNavigateUser = async (item) => {
@@ -99,7 +101,8 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
       await switchWorkspace(item.workspaceId);
     }
     onClose();
-    navigate('/app');
+    const probParam = item.problemId ? `?problem=${item.problemId}` : '';
+    navigate(`/app${probParam}`);
   };
 
   return (
@@ -278,7 +281,7 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
                         </Button>
                       )}
 
-                      {(isProblemReported || isEmergency || isVote || isJoinReq) && (
+                      {(isProblemReported || isEmergency || isVote || isJoinReq || item.type === 'admin_resolution_published' || item.type === 'admin_alert') && (
                         <Button
                           variant={isEmergency ? 'danger' : 'primary'}
                           size="xs"
@@ -292,7 +295,7 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
                         </Button>
                       )}
 
-                      {(isResolvedPoll || isVerified || isMessage) && (
+                      {(isResolvedPoll || isVerified || isMessage || item.type === 'problem_submitted_confirmation' || item.type === 'resolution_reopened') && (
                         <Button
                           variant="secondary"
                           size="xs"
@@ -302,7 +305,7 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
                           }}
                           iconRight={<ArrowRight className="w-3 h-3" />}
                         >
-                          View Query
+                          {isResolvedPoll ? 'Inspect Resolution' : 'View Query'}
                         </Button>
                       )}
 

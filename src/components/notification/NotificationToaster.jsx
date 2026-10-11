@@ -29,12 +29,20 @@ export const NotificationToaster = () => {
     }
     dismissToast(toast.id);
 
+    const problemParam = toast.problemId ? `?problem=${toast.problemId}` : '';
+
     if (toast.actionUrl) {
       navigate(toast.actionUrl);
-    } else if (toast.type === 'problem_reported' || toast.type === 'emergency_problem') {
-      navigate('/admin');
-    } else if (toast.type === 'problem_resolved_verification' || toast.type === 'resolution_verified') {
-      navigate('/app');
+    } else if (
+      toast.type === 'problem_reported' ||
+      toast.type === 'emergency_problem' ||
+      toast.type === 'verification_vote_submitted' ||
+      toast.type === 'admin_resolution_published' ||
+      toast.type === 'request_received'
+    ) {
+      navigate(`/admin${problemParam}`);
+    } else {
+      navigate(`/app${problemParam}`);
     }
   };
 

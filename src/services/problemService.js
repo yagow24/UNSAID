@@ -632,7 +632,7 @@ export const sendProblemMessage = async ({
             // Staff replied: Notify the query reporter(s)
             const recipients = Array.from(new Set([targetAuthorId, ...(probData.eligibleReporterIds || [])]));
             for (const rId of recipients) {
-              if (rId && rId !== senderId) {
+              if (rId) {
                 const notifRef = doc(collection(db, 'notifications'));
                 await setDoc(notifRef, {
                   userId: rId,
@@ -647,14 +647,25 @@ export const sendProblemMessage = async ({
               }
             }
           } else {
-            // User replied: Notify the resolving admin or workspace creator
+            // User replied: Notify all workspace admins
             const adminId = probData.officialResolution?.resolvedBy || probData.resolvedBy;
             const wsSnap = await getDoc(doc(db, 'workspaces', workspaceId));
             const wsCreator = wsSnap.exists() ? wsSnap.data().createdBy : null;
-            const targetAdmins = Array.from(new Set([adminId, wsCreator].filter(Boolean)));
+            const targetAdmins = new Set([adminId, wsCreator].filter(Boolean));
+
+            try {
+              const memSnap = await getDocs(
+                query(collection(db, 'workspaceMembers'), where('workspaceId', '==', workspaceId), where('role', '==', 'admin'))
+              );
+              memSnap.forEach((m) => {
+                if (m.data()?.userId) targetAdmins.add(m.data().userId);
+              });
+            } catch {
+              // Non-blocking
+            }
 
             for (const aId of targetAdmins) {
-              if (aId && aId !== senderId) {
+              if (aId) {
                 const notifRef = doc(collection(db, 'notifications'));
                 await setDoc(notifRef, {
                   userId: aId,
@@ -852,7 +863,7 @@ export const broadcastOfficialResolution = async ({
 
     // 4. Automatically deliver real-time notifications to all eligible reporters
     for (const reporterId of eligibleReporterIds) {
-      if (reporterId && reporterId !== resolverId) {
+      if (reporterId) {
         try {
           const notifRef = doc(collection(db, 'notifications'));
           await setDoc(notifRef, {
@@ -869,6 +880,26 @@ export const broadcastOfficialResolution = async ({
         } catch (notifErr) {
           console.warn('[UNSAID Problem Service] Reporter notification notice:', notifErr.message);
         }
+      }
+    }
+
+    // 5. Notify the resolving admin as confirmation
+    if (resolverId) {
+      try {
+        const adminNotifRef = doc(collection(db, 'notifications'));
+        await setDoc(adminNotifRef, {
+          userId: resolverId,
+          type: 'admin_resolution_published',
+          title: 'Resolution Published & Poll Active',
+          message: `Official solution for "${targetProb?.title || 'query'}" published. Verification poll is open for reporters.`,
+          problemId,
+          workspaceId: workspaceId || targetProb?.workspaceId,
+          resolutionCycleId,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      } catch (adminNotifErr) {
+        console.warn('[UNSAID Problem Service] Admin resolution notice error:', adminNotifErr.message);
       }
     }
   }

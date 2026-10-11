@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   query,
@@ -422,22 +423,42 @@ export const submitVerificationVote = async ({
       { merge: true }
     );
 
-    // Notify the resolving administrator of the new vote
+    // Notify the resolving administrator and all workspace admins of the new vote
     try {
-      const targetAdmin = poll.resolvedBy;
-      if (targetAdmin && targetAdmin !== currentUser.uid) {
-        const notifRef = doc(collection(db, 'notifications'));
-        await setDoc(notifRef, {
-          userId: targetAdmin,
-          type: 'verification_vote_submitted',
-          title: 'Verification Vote Cast',
-          message: `${voteData.userName} voted "${selectedOption}" on resolution cycle.`,
-          problemId,
-          workspaceId,
-          resolutionCycleId: activeCycle,
-          read: false,
-          createdAt: serverTimestamp(),
+      const adminIds = new Set();
+      if (poll.resolvedBy) adminIds.add(poll.resolvedBy);
+
+      try {
+        const wsRef = doc(db, 'workspaces', workspaceId);
+        const wsSnap = await getDoc(wsRef);
+        if (wsSnap.exists() && wsSnap.data()?.createdBy) {
+          adminIds.add(wsSnap.data().createdBy);
+        }
+        const memSnap = await getDocs(
+          query(collection(db, 'workspaceMembers'), where('workspaceId', '==', workspaceId), where('role', '==', 'admin'))
+        );
+        memSnap.forEach((m) => {
+          if (m.data()?.userId) adminIds.add(m.data().userId);
         });
+      } catch {
+        // Fallback
+      }
+
+      for (const targetAdmin of adminIds) {
+        if (targetAdmin) {
+          const notifRef = doc(collection(db, 'notifications'));
+          await setDoc(notifRef, {
+            userId: targetAdmin,
+            type: 'verification_vote_submitted',
+            title: 'Verification Vote Cast',
+            message: `${voteData.userName} voted "${selectedOption}" on resolution cycle.`,
+            problemId,
+            workspaceId,
+            resolutionCycleId: activeCycle,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
       }
 
       // Confirmation notification for the voter
