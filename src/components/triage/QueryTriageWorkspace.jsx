@@ -121,6 +121,7 @@ export const QueryTriageWorkspace = ({
 
   // Selected problem state
   const [internalSelectedId, setInternalSelectedId] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const activeSelectedId = controlledSelectedId || internalSelectedId;
 
   // Filter & Search states
@@ -218,18 +219,7 @@ export const QueryTriageWorkspace = ({
     return currentProblemFromList;
   }, [localProblemOverride, activeSelectedId, currentProblemFromList]);
 
-  // Default selection if none selected on desktop
-  useEffect(() => {
-    if (!activeSelectedId && problems.length > 0) {
-      const firstActive = problems.find((p) => p.status === 'open') || problems[0];
-      if (firstActive) {
-        queueMicrotask(() => {
-          setInternalSelectedId(firstActive.id);
-          if (onSelectProblem) onSelectProblem(firstActive);
-        });
-      }
-    }
-  }, [activeSelectedId, problems, onSelectProblem]);
+  // Note: Queries are opened in dedicated popup modal on user click. No desktop auto-select.
 
   // Subscribe to real-time collections for the selected problem
   useEffect(() => {
@@ -415,11 +405,14 @@ export const QueryTriageWorkspace = ({
   // Quality Feedback Metrics
   const userFeedback = qualityFeedbacks.find((f) => f.userId === currentUser?.uid)?.rating;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Handlers
   const handleSelect = useCallback(
     (prob) => {
       setInternalSelectedId(prob.id);
       setLocalProblemOverride(null);
+      setIsDetailModalOpen(true);
       setMobileDetailOpen(true);
       if (onSelectProblem) onSelectProblem(prob);
     },
@@ -435,14 +428,27 @@ export const QueryTriageWorkspace = ({
       } else {
         setInternalSelectedId(problemId);
         setLocalProblemOverride(null);
+        setIsDetailModalOpen(true);
         setMobileDetailOpen(true);
       }
     },
     [problems, handleSelect]
   );
 
+  const handleCloseModal = useCallback(() => {
+    setIsDetailModalOpen(false);
+    setInternalSelectedId(null);
+    setLocalProblemOverride(null);
+    setMobileDetailOpen(false);
+    if (onSelectProblem) onSelectProblem(null);
+    if (searchParams.get('problem')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('problem');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [onSelectProblem, searchParams, setSearchParams]);
+
   // Auto-select problem if linked via URL query param (?problem=...)
-  const [searchParams] = useSearchParams();
   useEffect(() => {
     const urlProbId = searchParams.get('problem');
     if (urlProbId) {
@@ -1034,15 +1040,10 @@ export const QueryTriageWorkspace = ({
       {/* ========================================================= */}
       {/* POPUP MODAL: DEDICATED SEPARATE TRIAGE & RESOLUTION VIEW   */}
       {/* ========================================================= */}
-      {selectedProblem && (
+      {selectedProblem && isDetailModalOpen && (
         <ModalShell
-          isOpen={Boolean(selectedProblem)}
-          onClose={() => {
-            setInternalSelectedId(null);
-            setLocalProblemOverride(null);
-            setMobileDetailOpen(false);
-            if (onSelectProblem) onSelectProblem(null);
-          }}
+          isOpen={isDetailModalOpen && Boolean(selectedProblem)}
+          onClose={handleCloseModal}
           title={
             <div className="flex items-center gap-2 flex-wrap">
               <span className="truncate max-w-md">{selectedProblem.title || 'Query Triage'}</span>
@@ -1089,12 +1090,7 @@ export const QueryTriageWorkspace = ({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setInternalSelectedId(null);
-                  setLocalProblemOverride(null);
-                  setMobileDetailOpen(false);
-                  if (onSelectProblem) onSelectProblem(null);
-                }}
+                onClick={handleCloseModal}
               >
                 Close
               </Button>
