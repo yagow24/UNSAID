@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clock,
   ThumbsUp,
@@ -566,15 +567,19 @@ export const ProblemFeed = ({
             if (onRefresh) onRefresh();
           }}
           onProblemUpdated={(updated) => {
-            setSelectedProblem(updated);
+            if (updated?.deleted) {
+              setSelectedProblem(null);
+            } else {
+              setSelectedProblem(updated);
+            }
             if (onRefresh) onRefresh();
           }}
         />
       )}
 
-      {/* Delete Query Confirmation Modal */}
-      {problemToDelete && (
-        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
+      {/* Delete Query Confirmation Modal via Portal */}
+      {problemToDelete && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10005] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
@@ -627,7 +632,8 @@ export const ProblemFeed = ({
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

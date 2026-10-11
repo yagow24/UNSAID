@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -181,6 +182,7 @@ export const QueryTriageWorkspace = ({
 
   // Delete Query State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingQuery, setDeletingQuery] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
@@ -192,6 +194,7 @@ export const QueryTriageWorkspace = ({
     try {
       await deleteProblem(targetId, workspace?.id || selectedProblem.workspaceId);
       setShowDeleteModal(false);
+      setConfirmingDelete(false);
       setIsDetailModalOpen(false);
       setInternalSelectedId(null);
       setLocalProblemOverride(null);
@@ -1076,19 +1079,46 @@ export const QueryTriageWorkspace = ({
                 >
                   {selectedProblem.status === 'solved' || selectedProblem.status === 'resolved' ? 'Reopen Query' : 'Mark as Solved'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setDeleteError('');
-                    setShowDeleteModal(true);
-                  }}
-                  className="text-xs text-[var(--danger)] hover:bg-[var(--danger)]/15 h-8 px-2.5"
-                  icon={<Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />}
-                >
-                  Delete Query
-                </Button>
+                {confirmingDelete ? (
+                  <div className="flex items-center gap-1.5 p-1 px-2.5 rounded-xl bg-[var(--danger)]/10 border border-[var(--danger)]/30 animate-in fade-in">
+                    <span className="text-[11px] font-bold text-[var(--danger)]">Confirm delete?</span>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      isLoading={deletingQuery}
+                      disabled={deletingQuery}
+                      onClick={handleDeleteQuery}
+                      className="h-7 px-2.5 text-xs font-semibold"
+                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                    >
+                      Yes, Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmingDelete(false)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDeleteError('');
+                      setConfirmingDelete(true);
+                    }}
+                    className="text-xs text-[var(--danger)] hover:bg-[var(--danger)]/15 h-8 px-2.5"
+                    icon={<Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />}
+                  >
+                    Delete Query
+                  </Button>
+                )}
               </div>
 
               <Button
@@ -1156,9 +1186,12 @@ export const QueryTriageWorkspace = ({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      isLoading={deletingQuery}
+                      disabled={deletingQuery}
                       onClick={() => {
-                        setDeleteError('');
-                        setShowDeleteModal(true);
+                        if (window.confirm(`Are you sure you want to permanently delete "${selectedProblem.title || 'this query'}"?`)) {
+                          handleDeleteQuery();
+                        }
                       }}
                       className="text-xs text-[var(--danger)] hover:bg-[var(--danger)]/15 h-7 px-2"
                       icon={<Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />}
@@ -2110,9 +2143,9 @@ export const QueryTriageWorkspace = ({
         </div>
       )}
 
-      {/* Delete Query Modal */}
-      {showDeleteModal && selectedProblem && (
-        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
+      {/* Delete Query Modal via Portal */}
+      {showDeleteModal && selectedProblem && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10005] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
@@ -2165,7 +2198,8 @@ export const QueryTriageWorkspace = ({
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* AI Executive Summary Modal */}

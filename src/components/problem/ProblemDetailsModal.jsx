@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clock,
   ThumbsUp,
@@ -102,6 +103,7 @@ export const ProblemDetailsModal = ({
 
   // 5. Delete Query State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingProblem, setDeletingProblem] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
@@ -193,6 +195,7 @@ export const ProblemDetailsModal = ({
     try {
       await deleteProblem(problem.id, workspace?.id || problem.workspaceId);
       setShowDeleteConfirm(false);
+      setConfirmingDelete(false);
       if (onProblemUpdated) onProblemUpdated({ id: problem.id, deleted: true });
       if (onStatusChanged) onStatusChanged(problem.id, 'deleted');
       if (onClose) onClose();
@@ -505,18 +508,45 @@ export const ProblemDetailsModal = ({
               </Button>
             )}
             {(isAdmin || isAuthor) && (
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                icon={<Trash2 className="w-4 h-4" />}
-                onClick={() => {
-                  setDeleteError('');
-                  setShowDeleteConfirm(true);
-                }}
-              >
-                Delete Query
-              </Button>
+              confirmingDelete ? (
+                <div className="flex items-center gap-1.5 p-1 px-2.5 rounded-xl bg-[var(--danger)]/10 border border-[var(--danger)]/30 animate-in fade-in">
+                  <span className="text-[11px] font-bold text-[var(--danger)]">Confirm delete?</span>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    isLoading={deletingProblem}
+                    disabled={deletingProblem}
+                    onClick={handleDeleteProblem}
+                    className="h-7 px-2.5 text-xs font-semibold"
+                    icon={<Trash2 className="w-3.5 h-3.5" />}
+                  >
+                    Yes, Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash2 className="w-4 h-4" />}
+                  onClick={() => {
+                    setDeleteError('');
+                    setConfirmingDelete(true);
+                  }}
+                >
+                  Delete Query
+                </Button>
+              )
             )}
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -1402,9 +1432,9 @@ export const ProblemDetailsModal = ({
         )}
       </div>
 
-      {/* Delete Query Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
+      {/* Delete Query Confirmation Modal via Portal */}
+      {showDeleteConfirm && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10005] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">
@@ -1457,7 +1487,8 @@ export const ProblemDetailsModal = ({
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </ModalShell>
   );
