@@ -30,6 +30,7 @@ export const ProblemFeed = ({
   onOpenReportModal,
   onRefresh,
   onSelectProblem,
+  onProblemDeleted,
 }) => {
   const { currentUser: authUser, userProfile } = useAuth();
   const effectiveUser = currentUser || authUser;
@@ -155,14 +156,18 @@ export const ProblemFeed = ({
 
   const handleDeleteProblemConfirm = async () => {
     if (!problemToDelete?.id) return;
+    const delId = problemToDelete.id;
     setDeletingProblem(true);
     setDeleteError('');
     try {
-      await deleteProblem(problemToDelete.id, workspace?.id || problemToDelete.workspaceId);
-      if (selectedProblem?.id === problemToDelete.id) {
+      await deleteProblem(delId, workspace?.id || problemToDelete.workspaceId);
+      if (selectedProblem?.id === delId) {
         setSelectedProblem(null);
       }
       setProblemToDelete(null);
+      if (onProblemDeleted) {
+        onProblemDeleted(delId);
+      }
       if (onRefresh) {
         onRefresh();
       }
@@ -569,7 +574,7 @@ export const ProblemFeed = ({
 
       {/* Delete Query Confirmation Modal */}
       {problemToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">

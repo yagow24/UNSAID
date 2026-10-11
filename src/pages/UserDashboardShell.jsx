@@ -541,6 +541,12 @@ export const UserDashboardShell = () => {
           onOpenReportModal={handleOpenNormalReport}
           onRefresh={loadProblems}
           onSelectProblem={(prob) => setSelectedProblemDetails(prob)}
+          onProblemDeleted={(deletedId) => {
+            setProblems((prev) => prev.filter((p) => p.id !== deletedId));
+            if (selectedProblemDetails?.id === deletedId) {
+              setSelectedProblemDetails(null);
+            }
+          }}
         />
       </section>
 
@@ -616,6 +622,12 @@ export const UserDashboardShell = () => {
           workspace={currentWorkspace}
           currentUser={currentUser}
           allWorkspaceProblems={problems}
+          onStatusChanged={(probId, status) => {
+            if (status === 'deleted') {
+              setProblems((prev) => prev.filter((p) => p.id !== probId));
+              setSelectedProblemDetails(null);
+            }
+          }}
           onProblemUpdated={(updated) => {
             if (updated?.deleted) {
               setProblems((prev) => prev.filter((p) => p.id !== updated.id));

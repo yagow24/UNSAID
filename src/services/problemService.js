@@ -1363,18 +1363,27 @@ export const deleteProblem = async (problemId, workspaceId) => {
     throw new Error('Problem identifier is required to delete.');
   }
 
-  // Remove from local storage cache if workspaceId is provided
-  if (workspaceId) {
-    try {
-      const existing = getLocalProblems(workspaceId);
-      const filtered = existing.filter((p) => p.id !== problemId);
-      localStorage.setItem(
-        `${LOCAL_STORAGE_PROBLEMS_PREFIX}${workspaceId}`,
-        JSON.stringify(filtered)
-      );
-    } catch (err) {
-      console.warn('[UNSAID Problem Service] Failed to remove from local cache:', err);
+  // Scrub thoroughly from all local storage caches
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(LOCAL_STORAGE_PROBLEMS_PREFIX) || key.startsWith('unsaid_'))) {
+          try {
+            const raw = localStorage.getItem(key);
+            if (raw && raw.includes(problemId)) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const filtered = parsed.filter((p) => p && p.id !== problemId);
+                localStorage.setItem(key, JSON.stringify(filtered));
+              }
+            }
+          } catch {}
+        }
+      }
     }
+  } catch (err) {
+    console.warn('[UNSAID Problem Service] Failed to remove from local cache:', err);
   }
 
   if (db) {
