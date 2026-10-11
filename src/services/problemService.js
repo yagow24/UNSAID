@@ -192,26 +192,42 @@ export const submitProblem = async ({
       const docRef = await withTimeout(addDoc(probRef, problemData), 4500);
       clientProblem.id = docRef.id;
 
-      // Automatically notify the workspace administrator
+      // Automatically notify the workspace administrators and reporting user
       try {
         const wsRef = doc(db, 'workspaces', workspaceId);
         const wsSnap = await withTimeout(getDoc(wsRef), 3000);
         if (wsSnap.exists()) {
           const wsData = wsSnap.data();
-          const adminUid = wsData.createdBy;
-          if (adminUid && adminUid !== authorId) {
-            const notifRef = doc(collection(db, 'notifications'));
-            await setDoc(notifRef, {
-              userId: adminUid,
-              type: isEmergency ? 'emergency_problem' : 'problem_reported',
-              title: isEmergency ? '🚨 Emergency Query Reported' : 'New Query Reported',
-              message: `${authorName} reported "${trimmedTitle}" in "${wsData.name || 'Workspace'}".`,
-              problemId: docRef.id,
-              workspaceId,
-              workspaceName: wsData.name || 'Workspace',
-              read: false,
-              createdAt: serverTimestamp(),
+          const adminIds = new Set();
+          if (wsData.createdBy) adminIds.add(wsData.createdBy);
+
+          try {
+            const memSnap = await getDocs(
+              query(collection(db, 'workspaceMembers'), where('workspaceId', '==', workspaceId), where('role', '==', 'admin'))
+            );
+            memSnap.forEach((m) => {
+              if (m.data()?.userId) adminIds.add(m.data().userId);
             });
+          } catch {
+            // Non-blocking
+          }
+
+          // Dispatch notification to all workspace admins
+          for (const aUid of adminIds) {
+            if (aUid) {
+              const notifRef = doc(collection(db, 'notifications'));
+              await setDoc(notifRef, {
+                userId: aUid,
+                type: isEmergency ? 'emergency_problem' : 'problem_reported',
+                title: isEmergency ? '🚨 Emergency Query Reported' : 'New Query Reported',
+                message: `${authorName} reported "${trimmedTitle}" in "${wsData.name || 'Workspace'}".`,
+                problemId: docRef.id,
+                workspaceId,
+                workspaceName: wsData.name || 'Workspace',
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+            }
           }
 
           if (authorId) {

@@ -150,10 +150,8 @@ export const UserDashboardShell = () => {
     setProblems((prev) => [newProblem, ...prev]);
   };
 
-  const latestRequestNotif = useMemo(() => {
-    return notifications.find(
-      (n) => !n.read && (n.type === 'request_approved' || n.type === 'request_rejected')
-    );
+  const latestUnreadNotif = useMemo(() => {
+    return notifications.find((n) => !n.read);
   }, [notifications]);
 
   return (
@@ -265,49 +263,59 @@ export const UserDashboardShell = () => {
           </div>
         )}
 
-        {/* Real-time Workspace Join Request Notification Banner */}
-        {latestRequestNotif && (
+        {/* Real-time Unread Notification Alert Banner */}
+        {latestUnreadNotif && (
           <div
-            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg transition-all ${
-              latestRequestNotif.type === 'request_approved'
+            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg transition-all animate-fade-in ${
+              latestUnreadNotif.type === 'request_approved' || latestUnreadNotif.type === 'resolution_verified'
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                : latestUnreadNotif.type === 'request_rejected' || latestUnreadNotif.type === 'emergency_problem' || latestUnreadNotif.type === 'resolution_reopened'
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                : latestUnreadNotif.type === 'problem_resolved_verification'
+                ? 'bg-[var(--cyan)]/10 border-[var(--cyan)]/30 text-[var(--cyan)]'
+                : 'bg-[var(--primary)]/10 border-[var(--primary)]/30 text-[var(--text)]'
             }`}
           >
             <div className="flex items-start gap-3">
-              <div className={`p-2 rounded-xl mt-0.5 ${
-                latestRequestNotif.type === 'request_approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+              <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${
+                latestUnreadNotif.type === 'request_approved' || latestUnreadNotif.type === 'resolution_verified'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : latestUnreadNotif.type === 'request_rejected' || latestUnreadNotif.type === 'emergency_problem' || latestUnreadNotif.type === 'resolution_reopened'
+                  ? 'bg-rose-500/20 text-rose-400'
+                  : latestUnreadNotif.type === 'problem_resolved_verification'
+                  ? 'bg-[var(--cyan)]/20 text-[var(--cyan)]'
+                  : 'bg-[var(--primary)]/20 text-[var(--primary)]'
               }`}>
-                {latestRequestNotif.type === 'request_approved' ? (
+                {latestUnreadNotif.type === 'request_approved' || latestUnreadNotif.type === 'resolution_verified' ? (
                   <CheckCircle className="w-5 h-5" />
-                ) : (
+                ) : latestUnreadNotif.type === 'request_rejected' ? (
                   <XCircle className="w-5 h-5" />
+                ) : latestUnreadNotif.type === 'problem_resolved_verification' ? (
+                  <Clock className="w-5 h-5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5" />
                 )}
               </div>
-              <div>
-                <div className="font-semibold text-sm text-[var(--text)] flex items-center gap-2">
-                  <span>{latestRequestNotif.title}</span>
-                  <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
-                    latestRequestNotif.type === 'request_approved'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-rose-500/20 text-rose-400'
-                  }`}>
-                    {latestRequestNotif.type === 'request_approved' ? 'Approved' : 'Declined'}
+              <div className="space-y-0.5">
+                <div className="font-semibold text-sm text-[var(--text)] flex items-center gap-2 flex-wrap">
+                  <span>{latestUnreadNotif.title}</span>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[var(--surface-hover)] border border-[var(--glass-border)] text-[var(--text-muted)]">
+                    Notification
                   </span>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">{latestRequestNotif.message}</p>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">{latestUnreadNotif.message}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-              {latestRequestNotif.type === 'request_approved' && latestRequestNotif.workspaceId && (
+              {latestUnreadNotif.type === 'request_approved' && latestUnreadNotif.workspaceId && (
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={async () => {
-                    await markAsRead(latestRequestNotif.id);
+                    await markAsRead(latestUnreadNotif.id);
                     if (switchWorkspace) {
-                      await switchWorkspace(latestRequestNotif.workspaceId);
+                      await switchWorkspace(latestUnreadNotif.workspaceId);
                     }
                   }}
                   className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold py-1.5 px-3 rounded-lg"
@@ -315,10 +323,22 @@ export const UserDashboardShell = () => {
                   Switch to Workspace
                 </Button>
               )}
+              {latestUnreadNotif.type === 'problem_resolved_verification' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    await markAsRead(latestUnreadNotif.id);
+                  }}
+                  className="text-xs font-semibold py-1.5 px-3 rounded-lg"
+                >
+                  Inspect Resolution
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => markAsRead(latestRequestNotif.id)}
+                onClick={() => markAsRead(latestUnreadNotif.id)}
                 className="text-xs text-[var(--text-muted)] hover:text-white"
                 title="Dismiss notification"
               >

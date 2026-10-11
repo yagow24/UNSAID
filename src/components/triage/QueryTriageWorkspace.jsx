@@ -36,6 +36,7 @@ import { CommunityPollWidget } from '../poll/CommunityPollWidget';
 import { AdminAISummaryModal } from './AdminAISummaryModal';
 import { useAuth } from '../../hooks/useAuth';
 import { useIdentity } from '../../hooks/useIdentity';
+import { useNotifications } from '../../hooks/useNotifications';
 import { getShiftStatus } from '../../config/shiftConfig';
 import { buildProblemActivityTimeline } from '../../utils/activityTimeline';
 import { fetchAIResolution } from '../../services/aiResolutionService';
@@ -141,6 +142,12 @@ export const QueryTriageWorkspace = ({
 
   // Local problem override for immediate optimistic updates
   const [localProblemOverride, setLocalProblemOverride] = useState(null);
+
+  // Live real-time notifications for Admin Console
+  const { notifications, markAsRead } = useNotifications();
+  const latestAdminNotif = useMemo(() => {
+    return notifications?.find((n) => !n.read) || null;
+  }, [notifications]);
 
   // Composer State
   const [messageInput, setMessageInput] = useState('');
@@ -695,6 +702,57 @@ export const QueryTriageWorkspace = ({
             </Button>
           </div>
         </div>
+
+        {/* Real-time Admin Notification Alert Banner */}
+        {latestAdminNotif && (
+          <div
+            className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs shadow-md transition-all animate-fade-in ${
+              latestAdminNotif.type === 'emergency_problem' || latestAdminNotif.type === 'resolution_reopened'
+                ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                : 'bg-[var(--cyan)]/15 border-[var(--cyan)]/40 text-[var(--cyan)]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-[var(--surface)] shrink-0">
+                {latestAdminNotif.type === 'emergency_problem' || latestAdminNotif.type === 'resolution_reopened' ? (
+                  <AlertTriangle className="w-4 h-4 text-[var(--danger)] animate-bounce" />
+                ) : (
+                  <Bell className="w-4 h-4 text-[var(--cyan)]" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="font-bold text-[var(--text)] block truncate">
+                  {latestAdminNotif.title}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)] block truncate">
+                  {latestAdminNotif.message}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {latestAdminNotif.problemId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSelectProblem(latestAdminNotif.problemId);
+                    markAsRead(latestAdminNotif.id);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[var(--primary)] text-white font-semibold text-[11px] hover:bg-[var(--primary-hover)] cursor-pointer"
+                >
+                  Triage Query
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => markAsRead(latestAdminNotif.id)}
+                className="px-2 py-1 rounded-lg text-[var(--text-muted)] hover:text-white text-[11px] cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Filter Controls Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">

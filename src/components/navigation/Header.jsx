@@ -245,7 +245,7 @@ export const Header = ({ onOpenNotifications }) => {
                 onClick={() => {
                   setUserNotificationsOpen(true);
                 }}
-                className="hidden sm:inline-flex cursor-pointer"
+                className="inline-flex cursor-pointer"
               />
 
               {/* Theme Toggle */}
