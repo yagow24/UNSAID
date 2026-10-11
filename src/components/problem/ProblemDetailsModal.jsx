@@ -193,6 +193,7 @@ export const ProblemDetailsModal = ({
     try {
       await deleteProblem(problem.id, workspace?.id || problem.workspaceId);
       setShowDeleteConfirm(false);
+      if (onProblemUpdated) onProblemUpdated({ id: problem.id, deleted: true });
       if (onStatusChanged) onStatusChanged(problem.id, 'deleted');
       if (onClose) onClose();
     } catch (err) {
@@ -1403,7 +1404,7 @@ export const ProblemDetailsModal = ({
 
       {/* Delete Query Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">

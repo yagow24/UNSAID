@@ -334,9 +334,13 @@ export const AdminDashboardShell = () => {
           error={errorProblems}
           workspace={currentWorkspace}
           onProblemUpdated={(updated) => {
-            setProblems((prev) =>
-              prev.map((p) => (p.id === updated.id ? updated : p))
-            );
+            if (updated?.deleted) {
+              setProblems((prev) => prev.filter((p) => p.id !== updated.id));
+            } else {
+              setProblems((prev) =>
+                prev.map((p) => (p.id === updated.id ? updated : p))
+              );
+            }
           }}
         />
       </section>

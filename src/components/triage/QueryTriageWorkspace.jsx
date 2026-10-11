@@ -185,14 +185,18 @@ export const QueryTriageWorkspace = ({
 
   const handleDeleteQuery = async () => {
     if (!selectedProblem?.id) return;
+    const targetId = selectedProblem.id;
     setDeletingQuery(true);
     setDeleteError('');
     try {
-      await deleteProblem(selectedProblem.id, workspace?.id || selectedProblem.workspaceId);
+      await deleteProblem(targetId, workspace?.id || selectedProblem.workspaceId);
       setShowDeleteModal(false);
+      setIsDetailModalOpen(false);
       setInternalSelectedId(null);
+      setLocalProblemOverride(null);
+      setMobileDetailOpen(false);
       if (onSelectProblem) onSelectProblem(null);
-      if (onProblemUpdated) onProblemUpdated({ id: selectedProblem.id, deleted: true });
+      if (onProblemUpdated) onProblemUpdated({ id: targetId, deleted: true });
     } catch (err) {
       console.error('[UNSAID Admin Delete Query Error]', err);
       setDeleteError(err.message || 'Failed to delete query.');
@@ -1951,7 +1955,7 @@ export const QueryTriageWorkspace = ({
       {/* MODAL: PUBLISH OFFICIAL RESOLUTION                        */}
       {/* ========================================================= */}
       {showResolutionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <GlassCard
             variant="panel"
             className="w-full max-w-lg p-5 border border-[var(--glass-border)] space-y-4 shadow-2xl"
@@ -2027,7 +2031,7 @@ export const QueryTriageWorkspace = ({
       {/* MODAL: MARK RECURRING                                     */}
       {/* ========================================================= */}
       {showRecurrenceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <GlassCard
             variant="panel"
             className="w-full max-w-md p-5 border border-[var(--glass-border)] space-y-4 shadow-2xl"
@@ -2107,7 +2111,7 @@ export const QueryTriageWorkspace = ({
 
       {/* Delete Query Modal */}
       {showDeleteModal && selectedProblem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto">
           <div className="w-full max-w-md p-6 rounded-3xl bg-[var(--surface)] border border-[var(--glass-border)] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 text-[var(--danger)] flex items-center justify-center shrink-0">

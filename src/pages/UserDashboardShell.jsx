@@ -617,10 +617,15 @@ export const UserDashboardShell = () => {
           currentUser={currentUser}
           allWorkspaceProblems={problems}
           onProblemUpdated={(updated) => {
-            setProblems((prev) =>
-              prev.map((p) => (p.id === updated.id ? updated : p))
-            );
-            setSelectedProblemDetails(updated);
+            if (updated?.deleted) {
+              setProblems((prev) => prev.filter((p) => p.id !== updated.id));
+              setSelectedProblemDetails(null);
+            } else {
+              setProblems((prev) =>
+                prev.map((p) => (p.id === updated.id ? updated : p))
+              );
+              setSelectedProblemDetails(updated);
+            }
           }}
         />
       )}
