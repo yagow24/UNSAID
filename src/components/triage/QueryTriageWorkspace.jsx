@@ -33,6 +33,7 @@ import {
 import { GlassCard } from '../ui/GlassCard';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { ModalShell } from '../ui/ModalShell';
 import { ProfileBadge } from '../profile/ProfileBadge';
 import { CommunityPollWidget } from '../poll/CommunityPollWidget';
 import { AdminAISummaryModal } from './AdminAISummaryModal';
@@ -861,72 +862,65 @@ export const QueryTriageWorkspace = ({
         </div>
       </GlassCard>
 
-      {/* 2. Split Workspace Layout (Desktop: Left List + Right Panel; Mobile: Stacked) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* ========================================================= */}
-        {/* LEFT / MAIN: PROBLEM LIST                                  */}
-        {/* ========================================================= */}
-        <div
-          className={`lg:col-span-5 space-y-2.5 ${
-            mobileDetailOpen ? 'hidden lg:block' : 'block'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs px-1 text-[var(--text-muted)] font-semibold uppercase tracking-wider">
-            <span>Query Queue ({filteredProblems.length})</span>
-            <span>Sorted by Urgency</span>
-          </div>
+      {/* 2. Full-Width Query Queue Grid Layout */}
+      <div className="w-full space-y-3">
+        <div className="flex items-center justify-between text-xs px-1 text-[var(--text-muted)] font-semibold uppercase tracking-wider">
+          <span>Query Queue ({filteredProblems.length})</span>
+          <span>Click any query to open details</span>
+        </div>
 
-          {loading ? (
-            <GlassCard className="py-16 text-center text-xs text-[var(--text-muted)] flex flex-col items-center justify-center gap-3">
-              <div className="w-6 h-6 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
-              <span>Loading queries...</span>
-            </GlassCard>
-          ) : filteredProblems.length === 0 ? (
-            <GlassCard className="py-14 text-center text-xs text-[var(--text-muted)] space-y-2">
-              <AlertCircle className="w-7 h-7 mx-auto opacity-40 text-[var(--text-muted)]" />
-              <p className="font-semibold text-[var(--text)]">No queries matching filter criteria</p>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Try clearing your search query or selecting &quot;All Priorities&quot;.
-              </p>
-              {(searchQuery || priorityFilter !== 'all' || statusFilter !== 'all') && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setPriorityFilter('all');
-                    setStatusFilter('all');
-                    setCategoryFilter('all');
-                  }}
-                  className="mt-2 text-xs"
+        {loading ? (
+          <GlassCard className="py-16 text-center text-xs text-[var(--text-muted)] flex flex-col items-center justify-center gap-3">
+            <div className="w-6 h-6 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+            <span>Loading queries...</span>
+          </GlassCard>
+        ) : filteredProblems.length === 0 ? (
+          <GlassCard className="py-14 text-center text-xs text-[var(--text-muted)] space-y-2">
+            <AlertCircle className="w-7 h-7 mx-auto opacity-40 text-[var(--text-muted)]" />
+            <p className="font-semibold text-[var(--text)]">No queries matching filter criteria</p>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              Try clearing your search query or selecting &quot;All Priorities&quot;.
+            </p>
+            {(searchQuery || priorityFilter !== 'all' || statusFilter !== 'all') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setPriorityFilter('all');
+                  setStatusFilter('all');
+                  setCategoryFilter('all');
+                }}
+                className="mt-2 text-xs"
+              >
+                Reset Filters
+              </Button>
+            )}
+          </GlassCard>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+            {filteredProblems.map((prob) => {
+              const isSelected = selectedProblem?.id === prob.id;
+              const isEmerg = prob.isEmergency || prob.priority === 'emergency';
+              const isSolved = prob.status === 'solved' || prob.status === 'resolved';
+
+              return (
+                <div
+                  key={prob.id}
+                  onClick={() => handleSelect(prob)}
+                  className={`group p-4 rounded-2xl border transition-all cursor-pointer select-none text-left relative flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-[var(--surface-hover)] border-[var(--primary)] shadow-md ring-1 ring-[var(--primary)]/40'
+                      : isSolved
+                      ? 'bg-[var(--surface)]/50 border-[var(--glass-border)] opacity-75 hover:opacity-100 hover:border-[var(--primary)]/50'
+                      : isEmerg
+                      ? 'bg-[var(--danger)]/5 border-[var(--danger)]/40 hover:bg-[var(--danger)]/10 hover:border-[var(--danger)]'
+                      : 'bg-[var(--surface)] border-[var(--glass-border)] hover:bg-[var(--surface-hover)] hover:border-[var(--glass-border)]'
+                  }`}
                 >
-                  Reset Filters
-                </Button>
-              )}
-            </GlassCard>
-          ) : (
-            <div className="space-y-2.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
-              {filteredProblems.map((prob) => {
-                const isSelected = selectedProblem?.id === prob.id;
-                const isEmerg = prob.isEmergency || prob.priority === 'emergency';
-                const isSolved = prob.status === 'solved' || prob.status === 'resolved';
-
-                return (
-                  <div
-                    key={prob.id}
-                    onClick={() => handleSelect(prob)}
-                    className={`group p-3.5 rounded-2xl border transition-all cursor-pointer select-none text-left relative ${
-                      isSelected
-                        ? 'bg-[var(--surface-hover)] border-[var(--primary)] shadow-md ring-1 ring-[var(--primary)]/40'
-                        : isSolved
-                        ? 'bg-[var(--surface)]/50 border-[var(--glass-border)] opacity-65 hover:opacity-100 hover:border-[var(--primary)]/50'
-                        : isEmerg
-                        ? 'bg-[var(--danger)]/5 border-[var(--danger)]/40 hover:bg-[var(--danger)]/10 hover:border-[var(--danger)]'
-                        : 'bg-[var(--surface)] border-[var(--glass-border)] hover:bg-[var(--surface-hover)] hover:border-[var(--glass-border)]'
-                    }`}
-                  >
+                  <div>
                     {/* Top Row: Badges & Recurrence */}
-                    <div className="flex items-center justify-between gap-1.5 mb-1.5 flex-wrap">
+                    <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {isEmerg && (
                           <Badge variant="high" size="sm" dot>
@@ -982,12 +976,14 @@ export const QueryTriageWorkspace = ({
                     <h4 className="text-sm font-bold text-[var(--text)] tracking-tight line-clamp-1 group-hover:text-[var(--primary)] transition-colors">
                       {prob.title || 'Untitled Query'}
                     </h4>
-                    <p className="text-xs text-[var(--text-muted)] line-clamp-2 mt-1 leading-relaxed">
+                    <p className="text-xs text-[var(--text-muted)] line-clamp-2 mt-1.5 leading-relaxed">
                       {prob.description || 'No description provided.'}
                     </p>
+                  </div>
 
-                    {/* Bottom Row: Votes / Acks / Feedback / Author */}
-                    <div className="flex items-center justify-between gap-2 pt-2.5 mt-2 border-t border-[var(--glass-border)] text-[11px] text-[var(--text-muted)] flex-wrap">
+                  {/* Bottom Row: Votes / Author / Category */}
+                  <div>
+                    <div className="flex items-center justify-between gap-2 pt-2.5 mt-3 border-t border-[var(--glass-border)] text-[11px] text-[var(--text-muted)] flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="truncate max-w-[120px]">
                           By {prob.authorName || prob.authorEmail || 'Member'}
@@ -1028,46 +1024,84 @@ export const QueryTriageWorkspace = ({
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-        {/* ========================================================= */}
-        {/* RIGHT / MAIN: SELECTED PROBLEM DETAIL & TRIAGE WORKSPACE  */}
-        {/* ========================================================= */}
-        <div
-          className={`lg:col-span-7 ${
-            mobileDetailOpen ? 'block' : 'hidden lg:block'
-          }`}
-        >
-          {!selectedProblem ? (
-            <GlassCard variant="panel" className="py-24 text-center space-y-3 border border-[var(--glass-border)]">
-              <Activity className="w-10 h-10 mx-auto opacity-30 text-[var(--primary)]" />
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-[var(--text)]">No Query Selected</h3>
-                <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
-                  Select a query from the left queue to inspect discussion threads, community polls, verification metrics, and publish official staff resolutions.
-                </p>
-              </div>
-            </GlassCard>
-          ) : (
-            <GlassCard
-              variant="panel"
-              className="p-5 border border-[var(--glass-border)] space-y-4 shadow-lg"
-            >
-              {/* Mobile Back Button */}
-              <div className="lg:hidden pb-1 border-b border-[var(--glass-border)]">
+      {/* ========================================================= */}
+      {/* POPUP MODAL: DEDICATED SEPARATE TRIAGE & RESOLUTION VIEW   */}
+      {/* ========================================================= */}
+      {selectedProblem && (
+        <ModalShell
+          isOpen={Boolean(selectedProblem)}
+          onClose={() => {
+            setInternalSelectedId(null);
+            setLocalProblemOverride(null);
+            setMobileDetailOpen(false);
+            if (onSelectProblem) onSelectProblem(null);
+          }}
+          title={
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="truncate max-w-md">{selectedProblem.title || 'Query Triage'}</span>
+              <span className="font-mono text-xs px-2 py-0.5 rounded-lg bg-[var(--surface-hover)] text-[var(--text-muted)] border border-[var(--glass-border)]">
+                #{selectedProblem.id.slice(-6).toUpperCase()}
+              </span>
+              {selectedProblem.isRecurring && (
+                <Badge variant="cyan" size="sm" icon={<RotateCcw className="w-2.5 h-2.5" />}>
+                  Recurring (#{selectedProblem.recurrenceCount || 2})
+                </Badge>
+              )}
+            </div>
+          }
+          subtitle={`Reported by ${selectedProblem.isAnonymous ? 'Anon Member' : (selectedProblem.authorName || selectedProblem.authorEmail || 'Member')} • Workspace: ${workspace?.name || 'Current'}`}
+          maxWidth="2xl"
+          footer={
+            <div className="flex items-center justify-between w-full flex-wrap gap-2">
+              <div className="flex items-center gap-2">
                 <Button
+                  type="button"
+                  variant={selectedProblem.status === 'solved' || selectedProblem.status === 'resolved' ? 'secondary' : 'primary'}
+                  size="sm"
+                  icon={selectedProblem.status === 'solved' || selectedProblem.status === 'resolved' ? <RotateCcw className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                  onClick={handleToggleSolved}
+                >
+                  {selectedProblem.status === 'solved' || selectedProblem.status === 'resolved' ? 'Reopen Query' : 'Mark as Solved'}
+                </Button>
+                <Button
+                  type="button"
                   variant="ghost"
                   size="sm"
-                  icon={<ArrowLeft className="w-3.5 h-3.5" />}
-                  onClick={() => setMobileDetailOpen(false)}
+                  onClick={() => {
+                    setDeleteError('');
+                    setShowDeleteModal(true);
+                  }}
+                  className="text-xs text-[var(--danger)] hover:bg-[var(--danger)]/15 h-8 px-2.5"
+                  icon={<Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />}
                 >
-                  Back to Query List
+                  Delete Query
                 </Button>
               </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setInternalSelectedId(null);
+                  setLocalProblemOverride(null);
+                  setMobileDetailOpen(false);
+                  if (onSelectProblem) onSelectProblem(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
 
               {/* Problem Header & Badges */}
               <div className="space-y-2">
@@ -1913,10 +1947,9 @@ export const QueryTriageWorkspace = ({
                   )}
                 </div>
               )}
-            </GlassCard>
-          )}
-        </div>
-      </div>
+            </div>
+        </ModalShell>
+      )}
 
       {/* ========================================================= */}
       {/* MODAL: PUBLISH OFFICIAL RESOLUTION                        */}
