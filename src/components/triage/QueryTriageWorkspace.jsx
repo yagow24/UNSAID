@@ -27,6 +27,7 @@ import {
   Lightbulb,
   Loader2,
   Trash2,
+  Bell,
 } from 'lucide-react';
 
 import { GlassCard } from '../ui/GlassCard';
