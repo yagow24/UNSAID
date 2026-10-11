@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ShieldCheck,
   AlertCircle,
+  AlertTriangle,
   X,
   Sparkles,
   Bot,
