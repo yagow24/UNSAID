@@ -72,6 +72,8 @@ export const ModalShell = ({
     md: 'max-w-xl',
     lg: 'max-w-3xl',
     xl: 'max-w-4xl',
+    '2xl': 'max-w-5xl',
+    full: 'max-w-6xl',
   }[maxWidth] || 'max-w-xl';
 
   const modalNode = (

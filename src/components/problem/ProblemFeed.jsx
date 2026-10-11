@@ -29,9 +29,18 @@ export const ProblemFeed = ({
   currentUser,
   onOpenReportModal,
   onRefresh,
+  onSelectProblem,
 }) => {
   const { currentUser: authUser, userProfile } = useAuth();
   const effectiveUser = currentUser || authUser;
+
+  const handleOpenProblem = (prob) => {
+    if (onSelectProblem) {
+      onSelectProblem(prob);
+    } else {
+      setSelectedProblem(prob);
+    }
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'mine' | 'open' | 'emergency' | 'solved' | 'confidential'
@@ -321,7 +330,8 @@ export const ProblemFeed = ({
               <GlassCard
                 key={prob.id}
                 glow={isEmergency}
-                className={`p-5 space-y-3.5 transition-all ${
+                onClick={() => handleOpenProblem(prob)}
+                className={`p-5 space-y-3.5 transition-all cursor-pointer hover:border-[var(--primary)]/60 hover:shadow-lg ${
                   isEmergency
                     ? 'border-2 border-[var(--danger)]/70 ring-2 ring-[var(--danger)]/20 shadow-md animate-pulse motion-reduce:animate-none bg-[var(--danger-light)]/20'
                     : isSolved
@@ -385,7 +395,10 @@ export const ProblemFeed = ({
                 {/* Title & Description */}
                 <div className="space-y-1">
                   <h3
-                    onClick={() => setSelectedProblem(prob)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenProblem(prob);
+                    }}
                     className="text-base font-bold text-[var(--text)] tracking-tight hover:text-[var(--primary)] transition-colors cursor-pointer"
                   >
                     {prob.title}
@@ -500,18 +513,24 @@ export const ProblemFeed = ({
                     {/* View Thread & Discuss Button */}
                     <button
                       type="button"
-                      onClick={() => setSelectedProblem(prob)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--surface)] hover:bg-[var(--glass-hover)] text-xs font-semibold text-[var(--text)] transition-all cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenProblem(prob);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--glass-border)] bg-[var(--surface)] hover:bg-[var(--glass-hover)] text-xs font-semibold text-[var(--text)] transition-all cursor-pointer hover:border-[var(--primary)]/60"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-[var(--primary)]" />
-                      <span>Thread</span>
+                      <span>Thread & Triage</span>
                     </button>
 
                     {/* Upvote Button */}
                     <button
                       type="button"
                       disabled={upvotingId === prob.id}
-                      onClick={() => handleUpvote(prob.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpvote(prob.id);
+                      }}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer ${
                         hasUserUpvoted
                           ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm'
@@ -530,8 +549,8 @@ export const ProblemFeed = ({
         </div>
       )}
 
-      {/* Interactive Triage & Discussion Details Modal */}
-      {selectedProblem && (
+      {/* Interactive Triage & Discussion Details Modal (Fallback when parent does not manage selection) */}
+      {!onSelectProblem && selectedProblem && (
         <ProblemDetailsModal
           isOpen={Boolean(selectedProblem)}
           onClose={() => setSelectedProblem(null)}

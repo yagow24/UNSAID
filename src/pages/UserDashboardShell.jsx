@@ -523,6 +523,7 @@ export const UserDashboardShell = () => {
           currentUser={currentUser}
           onOpenReportModal={handleOpenNormalReport}
           onRefresh={loadProblems}
+          onSelectProblem={(prob) => setSelectedProblemDetails(prob)}
         />
       </section>
 
