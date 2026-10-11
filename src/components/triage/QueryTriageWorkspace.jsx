@@ -1057,7 +1057,7 @@ export const QueryTriageWorkspace = ({
             </div>
           }
           subtitle={`Reported by ${selectedProblem.isAnonymous ? 'Anon Member' : (selectedProblem.authorName || selectedProblem.authorEmail || 'Member')} • Workspace: ${workspace?.name || 'Current'}`}
-          maxWidth="2xl"
+          maxWidth="lg"
           footer={
             <div className="flex items-center justify-between w-full flex-wrap gap-2">
               <div className="flex items-center gap-2">

@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Building2,
   XCircle,
+  Bell,
 } from 'lucide-react';
 
 import { useAuth } from '../hooks/useAuth';
@@ -35,6 +36,7 @@ import { ProfileBadge } from '../components/profile/ProfileBadge';
 import { ProfileCompletionBanner } from '../components/profile/ProfileCompletionBanner';
 import { ProfileModal } from '../components/profile/ProfileModal';
 import { ProblemDetailsModal } from '../components/problem/ProblemDetailsModal';
+import { NotificationsModal } from '../components/notification/NotificationsModal';
 import { getEffectiveProfile } from '../services/profileService';
 import { getShiftStatus } from '../config/shiftConfig';
 import { getWorkspaceProblems, subscribeToWorkspaceProblems } from '../services/problemService';
@@ -43,7 +45,7 @@ import { syncDailySnapshotFromMetrics } from '../services/historyService';
 export const UserDashboardShell = () => {
   const { userProfile, currentUser } = useAuth();
   const { currentWorkspace, switchWorkspace } = useWorkspace();
-  const { notifications, markAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead } = useNotifications();
 
   const [problems, setProblems] = useState([]);
   const [loadingProblems, setLoadingProblems] = useState(false);
@@ -52,6 +54,7 @@ export const UserDashboardShell = () => {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [chatbotOpen, setChatbotOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [selectedProblemDetails, setSelectedProblemDetails] = useState(null);
 
   // Auto-inspect problem if linked via URL query param (?problem=...)
@@ -266,6 +269,20 @@ export const UserDashboardShell = () => {
             </div>
 
             <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+              <button
+                type="button"
+                onClick={() => setNotificationsModalOpen(true)}
+                className="relative px-3 py-1 rounded-xl bg-[var(--surface-hover)] hover:bg-[var(--surface)] border border-[var(--glass-border)] text-[var(--text)] transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-xs"
+                title="Notifications & Alerts"
+              >
+                <Bell className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                <span>Alerts</span>
+                {unreadCount > 0 && (
+                  <span className="px-1.5 py-0.2 min-w-4 h-4 rounded-full bg-[var(--cyan)] text-white text-[9px] font-bold flex items-center justify-center shadow-sm animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
               <Button
                 variant="secondary"
                 size="xs"
@@ -582,6 +599,12 @@ export const UserDashboardShell = () => {
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}
         isAdmin={false}
+      />
+
+      {/* Notifications Modal */}
+      <NotificationsModal
+        isOpen={notificationsModalOpen}
+        onClose={() => setNotificationsModalOpen(false)}
       />
 
       {/* Problem Details Modal for Direct Notification Inspection */}

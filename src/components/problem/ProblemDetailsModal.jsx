@@ -488,7 +488,7 @@ export const ProblemDetailsModal = ({
         </div>
       }
       subtitle={`Workspace discussion for "${workspace?.name || 'Workspace'}"`}
-      maxWidth="2xl"
+      maxWidth="lg"
       footer={
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
