@@ -269,6 +269,36 @@ export const createWorkspaceJoinRequest = async ({
       transaction.set(reqDocRef, requestData);
     }
 
+    // Real-time notifications for join request submission
+    const adminNotificationRef = doc(collection(db, 'notifications'));
+    const userNotificationRef = doc(collection(db, 'notifications'));
+
+    if (workspace?.createdBy && workspace.createdBy !== userId) {
+      transaction.set(adminNotificationRef, {
+        userId: workspace.createdBy,
+        type: 'request_received',
+        title: 'New Access Request',
+        message: `${requestData.userName} requested to join "${requestData.workspaceName}".`,
+        requestId: reqDocId,
+        workspaceId,
+        workspaceName: requestData.workspaceName,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    transaction.set(userNotificationRef, {
+      userId,
+      type: 'request_submitted',
+      title: 'Join Request Sent',
+      message: `Your request to join "${requestData.workspaceName}" has been submitted for admin approval.`,
+      requestId: reqDocId,
+      workspaceId,
+      workspaceName: requestData.workspaceName,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+
     return {
       id: reqDocId,
       status: 'pending',

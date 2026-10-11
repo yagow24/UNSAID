@@ -421,6 +421,41 @@ export const submitVerificationVote = async ({
       },
       { merge: true }
     );
+
+    // Notify the resolving administrator of the new vote
+    try {
+      const targetAdmin = poll.resolvedBy;
+      if (targetAdmin && targetAdmin !== currentUser.uid) {
+        const notifRef = doc(collection(db, 'notifications'));
+        await setDoc(notifRef, {
+          userId: targetAdmin,
+          type: 'verification_vote_submitted',
+          title: 'Verification Vote Cast',
+          message: `${voteData.userName} voted "${selectedOption}" on resolution cycle.`,
+          problemId,
+          workspaceId,
+          resolutionCycleId: activeCycle,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      // Confirmation notification for the voter
+      const userNotifRef = doc(collection(db, 'notifications'));
+      await setDoc(userNotifRef, {
+        userId: currentUser.uid,
+        type: 'verification_vote_confirmed',
+        title: 'Verification Vote Recorded',
+        message: `Your verification vote "${selectedOption}" has been recorded.`,
+        problemId,
+        workspaceId,
+        resolutionCycleId: activeCycle,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    } catch (notifErr) {
+      console.warn('[UNSAID Verification] Vote notification notice:', notifErr.message);
+    }
   }
 
   return voteData;
@@ -520,8 +555,23 @@ export const evaluateAndApplyVerificationOutcome = async ({
             createdAt: serverTimestamp(),
           });
         }
+
+        // Also notify all eligible reporters that the query has been reopened
+        for (const rId of eligibleReporters) {
+          const notifRef = doc(collection(db, 'notifications'));
+          await setDoc(notifRef, {
+            userId: rId,
+            type: 'resolution_reopened',
+            title: 'Resolution Reopened for Action',
+            message: `Feedback was received on "${poll.resolutionText}". Staff has been notified to re-evaluate.`,
+            problemId,
+            workspaceId: workspaceId || poll.workspaceId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
       } catch (notifErr) {
-        console.warn('[UNSAID Verification] Admin notification dispatch notice:', notifErr.message);
+        console.warn('[UNSAID Verification] Reopen notification dispatch notice:', notifErr.message);
       }
     }
 
@@ -599,8 +649,23 @@ export const evaluateAndApplyVerificationOutcome = async ({
             createdAt: serverTimestamp(),
           });
         }
+
+        // Also notify all eligible reporters that the query is officially Solved
+        for (const rId of eligibleReporters) {
+          const notifRef = doc(collection(db, 'notifications'));
+          await setDoc(notifRef, {
+            userId: rId,
+            type: 'resolution_verified',
+            title: '🎉 Query Officially Solved',
+            message: `All reporters verified the resolution for "${poll.resolutionText}". Query is marked Solved!`,
+            problemId,
+            workspaceId: workspaceId || poll.workspaceId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
       } catch (notifErr) {
-        console.warn('[UNSAID Verification] Admin notification dispatch notice:', notifErr.message);
+        console.warn('[UNSAID Verification] Verified notification dispatch notice:', notifErr.message);
       }
     }
 

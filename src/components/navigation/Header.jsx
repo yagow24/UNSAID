@@ -243,13 +243,7 @@ export const Header = ({ onOpenNotifications }) => {
                 variant="glass"
                 size="md"
                 onClick={() => {
-                  if (isAdmin && pendingRequestsCount > 0 && unreadCount === 0) {
-                    setRequestsModalOpen(true);
-                  } else if (onOpenNotifications) {
-                    onOpenNotifications();
-                  } else {
-                    setUserNotificationsOpen(true);
-                  }
+                  setUserNotificationsOpen(true);
                 }}
                 className="hidden sm:inline-flex cursor-pointer"
               />

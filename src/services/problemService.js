@@ -213,6 +213,25 @@ export const submitProblem = async ({
               createdAt: serverTimestamp(),
             });
           }
+
+          if (authorId) {
+            try {
+              const userNotifRef = doc(collection(db, 'notifications'));
+              await setDoc(userNotifRef, {
+                userId: authorId,
+                type: 'problem_submitted_confirmation',
+                title: isEmergency ? '🚨 Emergency Query Submitted' : 'Query Submitted',
+                message: `Your query "${trimmedTitle}" was submitted to "${wsData?.name || 'Workspace'}" for review.`,
+                problemId: docRef.id,
+                workspaceId,
+                workspaceName: wsData?.name || 'Workspace',
+                read: false,
+                createdAt: serverTimestamp(),
+              });
+            } catch (userNotifErr) {
+              console.warn('[UNSAID Problem Service] User notification notice:', userNotifErr.message);
+            }
+          }
         }
       } catch (notifErr) {
         console.warn('[UNSAID Problem Service] Admin notification dispatch notice:', notifErr.message);
@@ -584,6 +603,60 @@ export const sendProblemMessage = async ({
         problemId,
         updatedLocal.map((m) => (m.id === localId ? clientMessage : m))
       );
+
+      // Real-time notification dispatch for discussion thread activity
+      try {
+        const probSnap = await getDoc(doc(db, 'problems', problemId));
+        if (probSnap.exists()) {
+          const probData = probSnap.data();
+          const targetAuthorId = probData.authorId || probData.createdBy;
+          const snippet = content.length > 80 ? `${content.substring(0, 80)}...` : content;
+
+          if (officialFlag) {
+            // Staff replied: Notify the query reporter(s)
+            const recipients = Array.from(new Set([targetAuthorId, ...(probData.eligibleReporterIds || [])]));
+            for (const rId of recipients) {
+              if (rId && rId !== senderId) {
+                const notifRef = doc(collection(db, 'notifications'));
+                await setDoc(notifRef, {
+                  userId: rId,
+                  type: 'thread_reply',
+                  title: 'Staff Replied to Query',
+                  message: `${senderName}: "${snippet}"`,
+                  problemId,
+                  workspaceId,
+                  read: false,
+                  createdAt: serverTimestamp(),
+                });
+              }
+            }
+          } else {
+            // User replied: Notify the resolving admin or workspace creator
+            const adminId = probData.officialResolution?.resolvedBy || probData.resolvedBy;
+            const wsSnap = await getDoc(doc(db, 'workspaces', workspaceId));
+            const wsCreator = wsSnap.exists() ? wsSnap.data().createdBy : null;
+            const targetAdmins = Array.from(new Set([adminId, wsCreator].filter(Boolean)));
+
+            for (const aId of targetAdmins) {
+              if (aId && aId !== senderId) {
+                const notifRef = doc(collection(db, 'notifications'));
+                await setDoc(notifRef, {
+                  userId: aId,
+                  type: 'thread_reply',
+                  title: 'New Discussion Reply',
+                  message: `${senderName} replied on "${probData.title || 'query'}": "${snippet}"`,
+                  problemId,
+                  workspaceId,
+                  read: false,
+                  createdAt: serverTimestamp(),
+                });
+              }
+            }
+          }
+        }
+      } catch (notifErr) {
+        console.warn('[UNSAID Message Notification Notice]', notifErr.message);
+      }
     } catch (err) {
       if ((typeof navigator !== 'undefined' && !navigator.onLine) || err.code === 'unavailable') {
         enqueueOfflineMessage(messageDoc);
