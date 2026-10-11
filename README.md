@@ -1,6 +1,6 @@
 # UNSAID — Query Resolution & Workspace Platform
 
-UNSAID is a real-time, workspace-scoped problem reporting and query resolution platform built with React, Vite, Tailwind CSS, and Firebase.
+UNSAID is a real-time, workspace-scoped problem reporting and query resolution platform built with React, Vite, Tailwind CSS, Firebase, and a Python Flask backend powered by Google Gemini AI.
 
 This codebase is cross-platform and runs identically on **macOS**, **Windows (Command Prompt / PowerShell)**, and **Linux**.
 
@@ -10,77 +10,184 @@ This codebase is cross-platform and runs identically on **macOS**, **Windows (Co
 
 - **Node.js**: v18.0.0+ or v20.0.0+ (LTS recommended)
 - **npm**: v9.0.0+
+- **Python**: 3.10+ (with `venv` module)
 - **Git**
 
 ---
 
-## Quick Setup (macOS / Linux)
+## One-Time Setup
+
+### 1. Clone & Install Frontend Dependencies
 
 ```bash
-# 1. Clone repository
+# Clone repository
 git clone <repository-url>
 cd UNSAID
 
-# 2. Install dependencies (generates platform-native node_modules)
+# Install Node dependencies
 npm install
-
-# 3. Create your local environment file
-cp .env.example .env
-# Edit .env and insert your Firebase project credentials
-
-# 4. Start local development server
-npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+### 2. Set Up Python Virtual Environment
 
----
+Create the virtual environment in the project root (`./venv`):
 
-## Quick Setup (Windows — PowerShell or Command Prompt)
+**On macOS / Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
+**On Windows (PowerShell):**
 ```powershell
-# 1. Clone repository
-git clone <repository-url>
-cd UNSAID
-
-# 2. Install dependencies (generates platform-native node_modules)
-npm install
-
-# 3. Create your local environment file
-# In PowerShell:
-Copy-Item .env.example .env
-# Or in Command Prompt (cmd):
-# copy .env.example .env
-
-# Edit .env and insert your Firebase project credentials
-
-# 4. Start local development server
-npm run dev
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-Open `http://localhost:5173` in your browser.
+**On Windows (Command Prompt - cmd):**
+```cmd
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
 
 ---
 
-## Firebase Configuration
+## Environment Variables Configuration
 
-1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com).
-2. Enable **Authentication** (Email/Password and Google Provider).
-3. Enable **Cloud Firestore** in your desired region (e.g. `asia-south1`).
-4. Enable **Cloud Storage** for problem attachment uploads.
-5. In Project Settings > General > Your apps, copy the Web SDK config values into your `.env`:
+Create a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+```
+
+Configure the following variables in `.env` (keep your secret keys private and never commit `.env` to Git):
 
 ```env
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+# ==========================================
+# Frontend Configuration (Firebase Web SDK)
+# ==========================================
+VITE_FIREBASE_API_KEY=your_firebase_web_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
+VITE_APP_BASE_URL=http://localhost:5173
 
-# Optional: Shareable URL base for invite links across devices
-VITE_APP_BASE_URL=
+# ==========================================
+# Backend Configuration (Flask & Gemini AI)
+# ==========================================
+GEMINI_API_KEY=your_google_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash-lite
+PORT=5001
+HOST=127.0.0.1
+FIREBASE_PROJECT_ID=your_firebase_project_id
 ```
+
+> [!CAUTION]
+> **CRITICAL SECURITY REQUIREMENT**:
+> `GEMINI_API_KEY` is a backend-only secret. **NEVER** prefix it with `VITE_` or expose it in frontend React code. The frontend interacts with AI exclusively through the Vite proxy (`/api/ai/*`) forwarding to the Flask backend.
+
+---
+
+## Single-Command Local Development
+
+To start **BOTH** the Flask backend and the Vite frontend simultaneously in a single terminal:
+
+```bash
+npm run dev:full
+```
+
+### What this command does:
+1. Automatically detects the Python executable inside your project-root `venv` across macOS, Linux, and Windows.
+2. Starts the Flask backend on `http://127.0.0.1:5001`.
+3. Starts the Vite development server on `http://localhost:5173`.
+4. Streams both backend and frontend logs side-by-side with colorized prefixes `[backend]` and `[frontend]`.
+5. Forwards all `/api/*` frontend requests to the Flask server via Vite's configured proxy.
+
+### How to Stop:
+Press **`Ctrl + C`** once in the terminal. Both the frontend and backend processes terminate cleanly and immediately release ports `5173` and `5001`.
+
+---
+
+## Available Scripts
+
+| Script | Command | Purpose |
+| :--- | :--- | :--- |
+| **`npm run dev:full`** | `concurrently ...` | **Starts both Flask backend & Vite frontend in one terminal** |
+| `npm run dev` | `vite` | Starts only the Vite frontend dev server |
+| `npm run dev:backend` | `node scripts/dev-backend.js` | Starts only the Flask backend using the root `venv` |
+| `npm run build` | `vite build` | Compiles optimized frontend production bundle |
+| `npm run lint` | `oxlint` | Codebase linting |
+| `npm run preview` | `vite preview` | Previews production build locally |
+| `npm run backend` | `python3 backend/app.py` | Legacy direct backend start command |
+| `npm run backend:test` | `python3 -m unittest ...` | Runs Python backend test suite |
+| `npm run backend:diag` | `python3 backend/diagnostic.py` | Runs backend Gemini AI diagnostics |
+
+---
+
+## Verifying Services
+
+With servers running via `npm run dev:full`, you can verify both endpoints:
+
+1. **Backend Health Check**:
+   ```bash
+   curl http://127.0.0.1:5001/api/health
+   # Response: {"status":"healthy","service":"unsaid-backend","aiConfigured":true,...}
+   ```
+
+2. **Gemini AI Status**:
+   ```bash
+   curl http://127.0.0.1:5001/api/ai/status
+   # Response: {"status":"online","success":true,"model":"gemini-2.5-flash-lite",...}
+   ```
+
+3. **Frontend Proxy Verification**:
+   ```bash
+   curl http://localhost:5173/api/health
+   # Forwards through Vite to Flask and returns the same health JSON
+   ```
+
+---
+
+## Troubleshooting
+
+### 1. Port 5001 is already in use
+If another terminal or background process is already bound to port 5001:
+- **macOS / Linux**:
+  ```bash
+  lsof -ti :5001 | xargs kill -9
+  ```
+- **Windows (PowerShell)**:
+  ```powershell
+  Get-Process -Id (Get-NetTCPConnection -LocalPort 5001).OwningProcess | Stop-Process -Force
+  ```
+- **Windows (Command Prompt)**:
+  ```cmd
+  netstat -ano | findstr :5001
+  taskkill /PID <PID_NUMBER> /F
+  ```
+
+### 2. "No venv found at ./venv" warning
+Ensure you created your virtual environment in the project root:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 3. "No module named flask" or missing Python dependencies
+Activate the virtual environment and reinstall packages:
+```bash
+./venv/bin/pip install -r requirements.txt
+# On Windows: .\venv\Scripts\pip.exe install -r requirements.txt
+```
+
+### 4. AI shows "API Key not configured"
+Verify that `GEMINI_API_KEY` is defined in `.env` without surrounding quotation marks and without a `VITE_` prefix.
 
 ---
 
@@ -95,79 +202,3 @@ npx firebase login
 # Deploy rules
 npx firebase deploy --only firestore:rules,storage
 ```
-
----
-
-## Available Scripts (Cross-Platform)
-
-All scripts run via npm without OS-dependent shell commands:
-
-| Script | Command | Purpose |
-| :--- | :--- | :--- |
-| `npm run dev` | `vite` | Starts Vite HMR development server |
-| `npm run build` | `vite build` | Compiles optimized production bundle |
-| `npm run lint` | `oxlint` | High-performance codebase linting |
-| `npm run preview` | `vite preview` | Locally previews production build |
-| `npm run backend` | `python3 backend/app.py` | Starts Flask Gemini AI backend server |
-| `npm run backend:test` | `python3 -m unittest ...` | Runs backend unit & integration tests |
-
----
-
-## Gemini AI Setup (Backend)
-
-UNSAID integrates Google's official Gemini Python SDK (`google-genai`) running on a secure Flask backend for query triage, pre-submit resolution, duplicate detection, and executive summaries.
-
-> [!CAUTION]
-> **CRITICAL SECURITY REQUIREMENT**:
-> The `GEMINI_API_KEY` must **NEVER** be placed in frontend/Vite environment variables (`VITE_...`), React source code, browser localStorage, or GitHub. The frontend communicates exclusively with the Flask API using verified Firebase Bearer tokens.
-
-### Step-by-Step Setup:
-
-1. **Obtain Gemini API Key**:
-   Create an API key from Google AI Studio ([https://aistudio.google.com/](https://aistudio.google.com/)).
-
-2. **Configure Backend Environment**:
-   In your root `.env` (or `backend/.env`):
-   ```env
-   GEMINI_API_KEY=your_actual_gemini_api_key
-   GEMINI_MODEL=gemini-2.5-flash
-   PORT=5001
-   FIREBASE_PROJECT_ID=unsaid-app-14199-4b37e
-   ```
-
-3. **Install Backend Dependencies**:
-   ```bash
-   # Create and activate Python virtual environment
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Install packages
-   pip install -r backend/requirements.txt
-   ```
-
-4. **Start the Flask Backend**:
-   ```bash
-   npm run backend
-   # Or: python3 backend/app.py
-   ```
-   The backend will be available at `http://127.0.0.1:5001`.
-
-5. **Start the React Frontend**:
-   ```bash
-   npm run dev
-   ```
-   The Vite dev server proxies `/api` calls directly to the Flask backend.
-
-6. **Run Backend Test Suite**:
-   ```bash
-   npm run backend:test
-   ```
-
----
-
-## Cross-Platform Hygiene Notes
-
-- **Never commit `node_modules/`**: Always let `npm install` generate dependencies locally.
-- **Never commit `.env` or service account keys**: Keep secrets in `.env` (gitignored).
-- **Line endings**: Normalization is managed automatically via `.gitattributes`.
-- **Case-sensitivity**: All file imports strictly match disk casing for Linux/Windows compatibility.

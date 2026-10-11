@@ -25,6 +25,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, googleProvider, getGoogleProvider, isFirebaseConfigured } from '../config/firebase';
 import { AuthContext } from './authContextDef';
+import { saveProfileToFirestore } from '../services/profileService';
 
 // Helper to ensure network calls never hang indefinitely
 const withTimeout = (promise, ms = 10000) =>
@@ -477,8 +478,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Safe Profile Update (allows updating fullName and avatar, blocks client role tampering)
-  const updateProfileData = async (fieldsToUpdate) => {
+  // Safe Profile Update (allows updating fullName, avatar, professional/academic details, blocks client role tampering)
+  const updateProfileData = async (fieldsToUpdate, options = {}) => {
     if (!currentUser) {
       throw new Error('User is not authenticated.');
     }
@@ -486,50 +487,45 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Database service is not configured.');
     }
 
-    // Filter strictly to safe editable fields
-    const safeData = {};
-    if (fieldsToUpdate.fullName !== undefined) {
-      const trimmedName = String(fieldsToUpdate.fullName).trim();
-      if (!trimmedName) {
-        throw new Error('Display name cannot be blank.');
+    // Persist to Firestore and get normalized profile
+    const savedProfile = await saveProfileToFirestore({
+      userId: currentUser.uid,
+      profileData: fieldsToUpdate,
+      workspaceId: options.workspaceId || null,
+      asDefault: options.asDefault !== false,
+    });
+
+    // 1. Update Firebase Auth displayName / photoURL if provided
+    if (auth?.currentUser) {
+      const authUpdates = {};
+      if (fieldsToUpdate.fullName && auth.currentUser.displayName !== fieldsToUpdate.fullName) {
+        authUpdates.displayName = fieldsToUpdate.fullName.trim();
       }
-      safeData.fullName = trimmedName;
-    }
-    if (fieldsToUpdate.avatarPreference !== undefined) {
-      safeData.avatarPreference = fieldsToUpdate.avatarPreference === 'photo' ? 'photo' : 'initials';
-    }
-
-    safeData.updatedAt = serverTimestamp();
-
-    // 1. Update Firebase Auth displayName
-    if (safeData.fullName && auth?.currentUser) {
-      try {
-        await updateProfile(auth.currentUser, { displayName: safeData.fullName });
-      } catch (authErr) {
-        console.warn('[UNSAID Auth] Could not update Auth profile displayName:', authErr);
+      if (fieldsToUpdate.avatarUrl && auth.currentUser.photoURL !== fieldsToUpdate.avatarUrl) {
+        authUpdates.photoURL = fieldsToUpdate.avatarUrl;
+      }
+      if (Object.keys(authUpdates).length > 0) {
+        try {
+          await updateProfile(auth.currentUser, authUpdates);
+        } catch (authErr) {
+          console.warn('[UNSAID Auth] Could not update Auth profile displayName/photoURL:', authErr);
+        }
       }
     }
 
     // 2. Immediately update AuthContext local states and persistent cache
-    const nextProfile = {
-      ...(userProfile || {}),
-      uid: currentUser.uid,
-      email: currentUser.email,
-      ...safeData,
-    };
-
-    setUserProfile(nextProfile);
+    setUserProfile(savedProfile);
     try {
-      localStorage.setItem(`unsaid_profile_${currentUser.uid}`, JSON.stringify(nextProfile));
+      localStorage.setItem(`unsaid_profile_${currentUser.uid}`, JSON.stringify(savedProfile));
     } catch {}
 
-    if (safeData.fullName) {
+    if (fieldsToUpdate.fullName) {
       setCurrentUser((prev) => {
         if (!prev) return prev;
         try {
           const updated = Object.create(Object.getPrototypeOf(prev));
           Object.assign(updated, prev);
-          updated.displayName = safeData.fullName;
+          updated.displayName = fieldsToUpdate.fullName.trim();
           return updated;
         } catch {
           return prev;
@@ -537,19 +533,7 @@ export const AuthProvider = ({ children }) => {
       });
     }
 
-    // 3. Persist to Firestore user profile document with timeout protection
-    if (db) {
-      const userRef = doc(db, 'users', currentUser.uid);
-      const firestoreData = {
-        ...safeData,
-        updatedAt: serverTimestamp(),
-      };
-      withTimeout(setDoc(userRef, firestoreData, { merge: true }), 2500).catch((fsErr) => {
-        console.warn('[UNSAID Auth] Firestore profile write deferred (offline/timeout):', fsErr.message);
-      });
-    }
-
-    return nextProfile;
+    return savedProfile;
   };
 
   // Re-authenticate current user with Google popup

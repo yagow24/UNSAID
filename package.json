@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "node scripts/dev-backend.js",
+    "dev:frontend": "vite",
+    "dev:full": "concurrently -k --names \"backend,frontend\" --prefix \"[{name}]\" --prefix-colors \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
@@ -12,7 +15,6 @@
     "backend:test": "python3 -m unittest discover backend/tests",
     "backend:diag": "python3 backend/diagnostic.py"
   },
-
   "dependencies": {
     "firebase": "^12.19.0",
     "lucide-react": "^1.50.0",
@@ -27,6 +29,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
+    "concurrently": "^10.0.6",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",

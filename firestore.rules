@@ -173,7 +173,13 @@ service cloud.firestore {
         request.resource.data.workspaceId == resource.data.workspaceId) || (
         isAuthenticated() &&
         isOwner(resource.data.userId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenAt', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastSeenAt', 'updatedAt', 'profile', 'professionalRole', 'department', 'designation', 'organization', 'avatarUrl', 'userName'
+        ]) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.workspaceId == resource.data.workspaceId
       );
       allow delete: if isWorkspaceAdmin(resource.data.workspaceId) || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
@@ -225,6 +231,13 @@ service cloud.firestore {
            'isRecurring', 'recurringCount', 'linkedProblemId', 'linkedProblemTitle',
            'updatedAt',
            'readByAdmin', 'readByUser'
+         ])) ||
+        // Eligible reporters can transition verification status outcome
+        ((('eligibleReporterIds' in resource.data && resource.data.eligibleReporterIds.hasAny([request.auth.uid])) ||
+          (('authorId' in resource.data) && resource.data.authorId == request.auth.uid) ||
+          (('createdBy' in resource.data) && resource.data.createdBy == request.auth.uid)) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'status', 'verificationStatus', 'verifiedAt', 'reopenReason', 'updatedAt'
          ]))
       );
       allow delete: if isAuthenticated() && (
@@ -407,6 +420,44 @@ service cloud.firestore {
         isAdmin() ||
         resource.data.userId == request.auth.uid
       );
+    }
+
+    // 15. Resolution Verification Polls Collection
+    // Linked to problem and resolution cycle. Accessible to workspace members and admins.
+    // Workspace admins can create and manage polls.
+    // Eligible reporters can transition verification status when evaluating votes.
+    match /resolutionVerificationPolls/{pollId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (
+        isAdmin() ||
+        isWorkspaceAdmin(request.resource.data.workspaceId) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'verificationStatus', 'closedAt', 'verifiedAt', 'reopenedAt', 'updatedAt'
+        ])) ||
+        (request.resource.data.eligibleReporterIds.hasAny([request.auth.uid])) ||
+        (resource != null && 'eligibleReporterIds' in resource.data && resource.data.eligibleReporterIds.hasAny([request.auth.uid]))
+      );
+      allow delete: if isAdmin() || isWorkspaceAdmin(resource.data.workspaceId);
+    }
+
+    // 16. Resolution Verification Votes Collection
+    // Strict voter eligibility: ONLY users recorded in eligibleReporterIds of the active poll may vote.
+    // Deterministic ID: {problemId}_{resolutionCycleId}_{userId}. Exactly 1 vote per user per cycle.
+    match /resolutionVerificationVotes/{voteId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.selectedOption in ['Solved', 'Partially Solved', 'Not Solved'] &&
+        (
+          isAdmin() ||
+          (
+            exists(/databases/$(database)/documents/resolutionVerificationPolls/$(request.resource.data.problemId)) &&
+            get(/databases/$(database)/documents/resolutionVerificationPolls/$(request.resource.data.problemId)).data.status == 'active' &&
+            get(/databases/$(database)/documents/resolutionVerificationPolls/$(request.resource.data.problemId)).data.workspaceId == request.resource.data.workspaceId &&
+            get(/databases/$(database)/documents/resolutionVerificationPolls/$(request.resource.data.problemId)).data.eligibleReporterIds.hasAny([request.auth.uid])
+          )
+        );
+      allow delete: if isAdmin() || isWorkspaceAdmin(resource.data.workspaceId);
     }
   }
 }

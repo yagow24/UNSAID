@@ -31,6 +31,7 @@ import {
 import { GlassCard } from '../ui/GlassCard';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { ProfileBadge } from '../profile/ProfileBadge';
 import { CommunityPollWidget } from '../poll/CommunityPollWidget';
 import { AdminAISummaryModal } from './AdminAISummaryModal';
 import { useAuth } from '../../hooks/useAuth';
@@ -56,6 +57,7 @@ import {
   deleteProblem,
 } from '../../services/problemService';
 import { subscribeToProblemPoll } from '../../services/pollService';
+import { ResolutionVerificationPoll } from '../problem/ResolutionVerificationPoll';
 
 /**
  * Format helper for timestamps (Timestamp, ISO, Date, or millis)
@@ -519,27 +521,21 @@ export const QueryTriageWorkspace = ({
 
     setPublishingResolution(true);
     try {
-      await broadcastOfficialResolution({
+      const resolution = await broadcastOfficialResolution({
         problemId: selectedProblem.id,
         resolutionText: resolutionText.trim(),
         actionTaken: resolutionActionTaken.trim(),
-        currentUser,
-        userProfile,
+        adminUser: currentUser,
+        adminProfile: userProfile,
+        workspaceId: workspace?.id || selectedProblem.workspaceId,
+        problemDoc: selectedProblem,
       });
 
       const updated = {
         ...selectedProblem,
-        status: 'solved',
-        officialResolution: {
-          problemId: selectedProblem.id,
-          workspaceId: selectedProblem.workspaceId,
-          resolutionText: resolutionText.trim(),
-          actionTaken: resolutionActionTaken.trim(),
-          resolvedBy: currentUser?.uid,
-          resolvedByName: userProfile?.fullName || currentUser?.displayName || 'Workspace Admin',
-          resolvedAt: new Date().toISOString(),
-          isOfficial: true,
-        },
+        status: 'in_verification',
+        verificationStatus: 'pending',
+        officialResolution: resolution,
       };
 
       setLocalProblemOverride(updated);
@@ -862,13 +858,27 @@ export const QueryTriageWorkspace = ({
                         >
                           {prob.priority ? prob.priority.toUpperCase() : 'NORMAL'}
                         </Badge>
-                        <Badge
-                          variant={isSolved ? 'low' : 'warning'}
-                          size="sm"
-                          dot
-                        >
-                          {isSolved ? 'SOLVED' : 'OPEN'}
-                        </Badge>
+                        {prob.status === 'in_verification' || prob.verificationStatus === 'pending' ? (
+                          <Badge variant="cyan" size="sm" dot>
+                            POLL ACTIVE
+                          </Badge>
+                        ) : prob.verificationStatus === 'verified' ? (
+                          <Badge variant="low" size="sm" dot>
+                            VERIFIED
+                          </Badge>
+                        ) : prob.verificationStatus === 'reopened' ? (
+                          <Badge variant="high" size="sm" dot>
+                            REOPENED
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant={isSolved ? 'low' : 'warning'}
+                            size="sm"
+                            dot
+                          >
+                            {isSolved ? 'SOLVED' : 'OPEN'}
+                          </Badge>
+                        )}
                         {prob.isRecurring && (
                           <Badge variant="cyan" size="sm" icon={<RotateCcw className="w-2.5 h-2.5" />}>
                             #{prob.recurrenceCount || 2}
@@ -890,11 +900,14 @@ export const QueryTriageWorkspace = ({
                     </p>
 
                     {/* Bottom Row: Votes / Acks / Feedback / Author */}
-                    <div className="flex items-center justify-between gap-2 pt-2.5 mt-2 border-t border-[var(--glass-border)] text-[11px] text-[var(--text-muted)]">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 pt-2.5 mt-2 border-t border-[var(--glass-border)] text-[11px] text-[var(--text-muted)] flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="truncate max-w-[120px]">
                           By {prob.authorName || prob.authorEmail || 'Member'}
                         </span>
+                        {!prob.isAnonymous && prob.authorRole && (
+                          <ProfileBadge profile={{ professionalRole: prob.authorRole }} size="xs" />
+                        )}
                         <span>•</span>
                         <span className="text-[var(--cyan)] font-medium">
                           {prob.category || 'General'}
@@ -911,6 +924,22 @@ export const QueryTriageWorkspace = ({
                         <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:translate-x-0.5 transition-transform" />
                       </div>
                     </div>
+
+                    {prob.officialResolution && (
+                      <div className="mt-2 pt-2 border-t border-[var(--glass-border)] flex items-center justify-between text-[11px]">
+                        <span className="flex items-center gap-1.5 text-[var(--cyan)] font-semibold text-[11px]">
+                          <ShieldCheck className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                          <span>Resolution Poll Created</span>
+                        </span>
+                        <span className="text-[var(--text-muted)] font-mono text-[10px]">
+                          {prob.verificationStatus === 'verified'
+                            ? '✅ Verified'
+                            : prob.verificationStatus === 'reopened'
+                            ? '⚠️ Reopened'
+                            : '⏳ Awaiting Reporter'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1017,9 +1046,24 @@ export const QueryTriageWorkspace = ({
                   </div>
                 </div>
 
-                <h3 className="text-lg font-extrabold text-[var(--text)] tracking-tight">
-                  {selectedProblem.title || 'Untitled Query'}
-                </h3>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-extrabold text-[var(--text)] tracking-tight">
+                    {selectedProblem.title || 'Untitled Query'}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--text-muted)]">
+                    <span className="font-semibold text-[var(--text)]">
+                      Reported by: {selectedProblem.isAnonymous ? (selectedProblem.authorName || 'Anon Member') : (selectedProblem.authorName || selectedProblem.authorEmail || 'Member')}
+                    </span>
+                    {!selectedProblem.isAnonymous && selectedProblem.authorRole && (
+                      <ProfileBadge profile={{ professionalRole: selectedProblem.authorRole }} size="xs" />
+                    )}
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-mono text-[11px]">
+                      <Clock className="w-3 h-3" />
+                      {formatFullTime(selectedProblem.createdAt)}
+                    </span>
+                  </div>
+                </div>
 
                 <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
                   {selectedProblem.description}
@@ -1247,6 +1291,27 @@ export const QueryTriageWorkspace = ({
                     </strong>
                   </div>
                 </div>
+              )}
+
+              {/* Resolution Verification Poll */}
+              {selectedProblem.officialResolution && (
+                <ResolutionVerificationPoll
+                  problemId={selectedProblem.id}
+                  workspaceId={workspace?.id || selectedProblem.workspaceId}
+                  currentUser={currentUser}
+                  userProfile={userProfile}
+                  isAdmin={true}
+                  onStatusChanged={(id, newStatus) => {
+                    const upd = { ...selectedProblem, status: newStatus };
+                    setLocalProblemOverride(upd);
+                    if (onProblemUpdated) onProblemUpdated(upd);
+                  }}
+                  onProblemUpdated={(updFields) => {
+                    const upd = { ...selectedProblem, ...updFields };
+                    setLocalProblemOverride(upd);
+                    if (onProblemUpdated) onProblemUpdated(upd);
+                  }}
+                />
               )}
 
               {/* ========================================================= */}
@@ -1559,7 +1624,7 @@ export const QueryTriageWorkspace = ({
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <strong
                                   className={`font-semibold ${
                                     isOfficial
@@ -1569,6 +1634,13 @@ export const QueryTriageWorkspace = ({
                                 >
                                   {msg.senderName || msg.authorName || 'Workspace Member'}
                                 </strong>
+
+                                {!msg.isAnonymous && (msg.senderProfessionalRole || msg.authorRole) && (
+                                  <ProfileBadge
+                                    profile={{ professionalRole: msg.senderProfessionalRole || msg.authorRole }}
+                                    size="xs"
+                                  />
+                                )}
 
                                 {isOfficial && (
                                   <Badge variant="high" size="sm" icon={<ShieldCheck className="w-3 h-3" />}>

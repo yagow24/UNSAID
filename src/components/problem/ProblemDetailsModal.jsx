@@ -24,6 +24,7 @@ import {
 import { ModalShell } from '../ui/ModalShell';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { ProfileBadge } from '../profile/ProfileBadge';
 import { CommunityPollWidget } from '../poll/CommunityPollWidget';
 import { useAuth } from '../../hooks/useAuth';
 import { useIdentity } from '../../hooks/useIdentity';
@@ -45,6 +46,7 @@ import {
   markProblemThreadRead,
   deleteProblem,
 } from '../../services/problemService';
+import { ResolutionVerificationPoll } from './ResolutionVerificationPoll';
 
 export const ProblemDetailsModal = ({
   isOpen,
@@ -222,6 +224,27 @@ export const ProblemDetailsModal = ({
     });
   };
 
+  const formatFullTime = (ts) => {
+    if (!ts) return 'Recently';
+    const d =
+      typeof ts.toDate === 'function'
+        ? ts.toDate()
+        : ts?.seconds
+        ? new Date(ts.seconds * 1000)
+        : ts instanceof Date
+        ? ts
+        : new Date(ts);
+
+    if (isNaN(d.getTime())) return 'Recently';
+    return d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   // Toggle problem status
   const handleToggleStatus = async () => {
     setUpdatingStatus(true);
@@ -309,17 +332,19 @@ export const ProblemDetailsModal = ({
         actionTaken: resolutionActionTaken,
         adminUser: currentUser,
         adminProfile: userProfile,
+        problemDoc: problem,
       });
       const updated = {
         ...problem,
-        status: 'solved',
+        status: 'in_verification',
+        verificationStatus: 'pending',
         officialResolution: resolution,
       };
       setProblem(updated);
       setShowResolutionForm(false);
       setResolutionText('');
       setResolutionActionTaken('');
-      if (onStatusChanged) onStatusChanged(problem.id, 'solved');
+      if (onStatusChanged) onStatusChanged(problem.id, 'in_verification');
       if (onProblemUpdated) onProblemUpdated(updated);
     } catch (err) {
       console.error('[UNSAID Broadcast Resolution Error]', err);
@@ -504,38 +529,47 @@ export const ProblemDetailsModal = ({
         {/* OFFICIAL RESOLUTION BROADCAST BANNER                      */}
         {/* ========================================================= */}
         {officialRes && (
-          <div className="p-4 rounded-2xl bg-[var(--success-light)]/20 border-2 border-[var(--success)]/60 text-[var(--text)] space-y-2 shadow-sm ring-1 ring-[var(--success)]/20">
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--surface)] border border-[var(--cyan)]/30 text-[var(--text)] space-y-3 shadow-sm ring-1 ring-[var(--cyan)]/20">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="low" size="sm" icon={<Award className="w-3.5 h-3.5" />}>
-                  OFFICIAL RESOLUTION
-                </Badge>
-              </div>
-              <span className="text-[11px] text-[var(--text-muted)] flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {formatTimestamp(officialRes.resolvedAt)}
+              <Badge variant="cyan" size="sm" className="font-mono text-[10px] tracking-wide uppercase px-2.5 py-0.5">
+                OFFICIAL RESOLUTION · CYCLE #{problem.resolutionCycleCount || 1}
+              </Badge>
+              <span className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5 font-mono">
+                <Clock className="w-3 h-3 text-[var(--text-muted)]" />
+                <span>{officialRes.resolvedByName || officialRes.resolvedBy || 'Admin'}</span>
               </span>
             </div>
 
-            <div className="text-sm font-semibold text-[var(--text)]">
-              {officialRes.resolutionText || officialRes.summary}
+            <div className="text-base font-extrabold text-[var(--text)] tracking-tight">
+              “{officialRes.resolutionText || officialRes.summary}”
             </div>
 
             {officialRes.actionTaken && (
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed bg-[var(--surface)] p-2.5 rounded-xl border border-[var(--glass-border)]">
-                <strong className="text-[var(--text)] block text-[11px] mb-0.5">Action Taken:</strong>
-                {officialRes.actionTaken}
-              </p>
+              <div className="text-xs text-[var(--text-secondary)] bg-[var(--surface-hover)] p-3 rounded-xl border border-[var(--glass-border)]">
+                <strong className="text-[var(--text)] font-semibold inline mr-1.5">Action Taken:</strong>
+                <span>{officialRes.actionTaken}</span>
+              </div>
             )}
-
-            <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5 pt-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-[var(--success)]" />
-              <span>Resolved by:</span>
-              <strong className="text-[var(--text)]">
-                {officialRes.resolvedByName || officialRes.resolvedBy || 'Workspace Administrator'}
-              </strong>
-            </div>
           </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* RESOLUTION VERIFICATION POLL (DIRECTLY BELOW RESOLUTION)  */}
+        {/* ========================================================= */}
+        {officialRes && (
+          <ResolutionVerificationPoll
+            problemId={problem.id}
+            workspaceId={workspace?.id || problem.workspaceId}
+            currentUser={currentUser}
+            userProfile={userProfile}
+            isAdmin={isAdmin}
+            onStatusChanged={onStatusChanged}
+            onProblemUpdated={(updatedFields) => {
+              const merged = { ...problem, ...updatedFields };
+              setProblem(merged);
+              if (onProblemUpdated) onProblemUpdated(merged);
+            }}
+          />
         )}
 
         {/* Admin Broadcast Button / Form */}
@@ -699,9 +733,24 @@ export const ProblemDetailsModal = ({
 
         {/* Title, Description & Workaround */}
         <div className="space-y-2">
-          <h3 className="text-base font-bold text-[var(--text)] tracking-tight">
-            {problem.title || 'Untitled Query'}
-          </h3>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-[var(--text)] tracking-tight">
+              {problem.title || 'Untitled Query'}
+            </h3>
+            <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--text-muted)]">
+              <span className="font-semibold text-[var(--text)]">
+                {problem.isAnonymous ? (problem.authorName || 'Anon Member') : (problem.authorName || 'Workspace Member')}
+              </span>
+              {!problem.isAnonymous && problem.authorRole && (
+                <ProfileBadge profile={{ professionalRole: problem.authorRole }} size="xs" />
+              )}
+              <span>•</span>
+              <span className="flex items-center gap-1 font-mono text-[11px]">
+                <Clock className="w-3 h-3" />
+                {formatFullTime(problem.createdAt)}
+              </span>
+            </div>
+          </div>
           <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
             {problem.description}
           </p>
@@ -1185,7 +1234,7 @@ export const ProblemDetailsModal = ({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <strong
                             className={`font-semibold ${
                               isOfficial
@@ -1197,6 +1246,13 @@ export const ProblemDetailsModal = ({
                           >
                             {msg.senderName || msg.authorName || 'Workspace Member'}
                           </strong>
+
+                          {!msg.isAnonymous && (msg.senderProfessionalRole || msg.authorRole) && (
+                            <ProfileBadge
+                              profile={{ professionalRole: msg.senderProfessionalRole || msg.authorRole }}
+                              size="xs"
+                            />
+                          )}
 
                           {isOfficial && (
                             <Badge variant="high" size="sm" icon={<ShieldCheck className="w-3 h-3" />}>

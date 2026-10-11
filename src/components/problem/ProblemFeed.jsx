@@ -12,13 +12,13 @@ import {
   Lock,
   CloudOff,
   Trash2,
-  AlertTriangle,
   User,
 } from 'lucide-react';
 import { GlassCard } from '../ui/GlassCard';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ProblemDetailsModal } from './ProblemDetailsModal';
+import { ProfileBadge } from '../profile/ProfileBadge';
 import { toggleProblemUpvote, deleteProblem } from '../../services/problemService';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -79,7 +79,7 @@ export const ProblemFeed = ({
       }
 
       // Status filtering
-      if (statusFilter === 'open' && prob.status !== 'open') return false;
+      if (statusFilter === 'open' && prob.status !== 'open' && prob.status !== 'in_verification') return false;
       if (statusFilter === 'solved' && prob.status !== 'solved') return false;
       if (statusFilter === 'emergency' && !prob.isEmergency) return false;
 
@@ -374,10 +374,10 @@ export const ProblemFeed = ({
 
                   <div className="flex items-center gap-2">
                     <Badge
-                      variant={prob.status === 'solved' ? 'low' : isEmergency ? 'high' : 'medium'}
+                      variant={prob.status === 'solved' ? 'low' : prob.status === 'in_verification' ? 'cyan' : isEmergency ? 'high' : 'medium'}
                       size="sm"
                     >
-                      {prob.status === 'solved' ? 'SOLVED' : 'OPEN'}
+                      {prob.status === 'solved' ? 'SOLVED' : prob.status === 'in_verification' ? 'IN VERIFICATION' : 'OPEN'}
                     </Badge>
                   </div>
                 </div>
@@ -452,16 +452,24 @@ export const ProblemFeed = ({
                 )}
 
                 {/* Footer: Author, Timestamp, Actions */}
-                <div className="pt-3 border-t border-[var(--glass-border)] flex items-center justify-between text-xs text-[var(--text-muted)]">
-                  <div className="flex items-center gap-2">
+                <div className="pt-3 border-t border-[var(--glass-border)] flex items-center justify-between text-xs text-[var(--text-muted)] flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {prob.isAnonymous ? (
                       <span className="font-semibold font-mono text-[var(--cyan)]" title="Anonymous Workspace Member">
                         {prob.authorName || 'Anon Member'}
                       </span>
                     ) : (
-                      <span className="font-medium text-[var(--text)]">
-                        {prob.authorName || 'Member'}
-                      </span>
+                      <>
+                        <span className="font-medium text-[var(--text)]">
+                          {prob.authorName || 'Member'}
+                        </span>
+                        {prob.authorRole && (
+                          <ProfileBadge
+                            profile={{ professionalRole: prob.authorRole }}
+                            size="xs"
+                          />
+                        )}
+                      </>
                     )}
                     <span>•</span>
                     <span className="flex items-center gap-1">

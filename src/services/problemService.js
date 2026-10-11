@@ -9,6 +9,7 @@
 import {
   collection,
   doc,
+  getDoc,
   addDoc,
   setDoc,
   deleteDoc,
@@ -24,6 +25,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { enqueueOfflineProblem, enqueueOfflineMessage } from './offlineSyncService';
+import { formatCompactProfile, getEffectiveProfile } from './profileService';
+import { createOrActivateVerificationPoll } from './verificationPollService';
 
 const withTimeout = (promise, ms = 4500) =>
   Promise.race([
@@ -132,6 +135,9 @@ export const submitProblem = async ({
     : (userProfile?.fullName || currentUser?.displayName || 'Workspace Member');
   const authorEmail = isAnonymous ? '' : (currentUser?.email || '');
 
+  const effectiveProfile = getEffectiveProfile(userProfile, workspaceId);
+  const authorRole = isAnonymous ? null : (formatCompactProfile(effectiveProfile) || null);
+
   const problemData = {
     workspaceId,
     title: trimmedTitle,
@@ -145,12 +151,16 @@ export const submitProblem = async ({
     priority: isEmergency ? 'emergency' : 'normal',
     workaround: trimmedWorkaround,
     shiftStatus: shiftStatus || 'ACTIVE SHIFT',
-    status: 'open', // 'open' | 'solved'
+    status: 'open', // 'open' | 'in_verification' | 'solved'
+    verificationStatus: null,
     createdBy: authorId,
     authorId,
     authorName,
     authorEmail,
+    authorRole,
     isAnonymous: Boolean(isAnonymous),
+    eligibleReporterIds: authorId && authorId !== 'anon_user' ? [authorId] : [],
+    affectedUserIds: authorId && authorId !== 'anon_user' ? [authorId] : [],
     imageUrl: imageUrl || null,
     imagePath: imagePath || null,
     aiAnalysis: aiAnalysis || null,
@@ -521,6 +531,9 @@ export const sendProblemMessage = async ({
   const senderRole = (isOfficial || isStaff) ? 'admin' : (userProfile?.role || 'member');
   const officialFlag = Boolean(isOfficial || isStaff);
 
+  const effectiveSenderProfile = getEffectiveProfile(userProfile, workspaceId);
+  const senderProfessionalRole = isAnonymous ? null : (formatCompactProfile(effectiveSenderProfile) || null);
+
   const messageDoc = {
     problemId,
     workspaceId,
@@ -528,6 +541,7 @@ export const sendProblemMessage = async ({
     senderName,
     senderEmail,
     senderRole,
+    senderProfessionalRole,
     message: content,
     isOfficial: officialFlag,
     isDismissed: false,
@@ -544,6 +558,7 @@ export const sendProblemMessage = async ({
     authorId: senderId,
     authorName: senderName,
     authorRole: senderRole,
+    senderProfessionalRole,
     text: content,
     isStaffResponse: officialFlag,
     createdAt: new Date().toISOString(),
@@ -629,7 +644,8 @@ export const dismissProblemMessage = async ({
 };
 
 /**
- * 2. OFFICIAL RESOLUTION BROADCAST: Admin marks official resolution on problem doc.
+ * 2. OFFICIAL RESOLUTION BROADCAST: Admin marks official resolution on problem doc
+ * and activates Resolution Verification Poll for eligible reporters.
  */
 export const broadcastOfficialResolution = async ({
   problemId,
@@ -639,6 +655,7 @@ export const broadcastOfficialResolution = async ({
   actionTaken = '',
   adminUser,
   adminProfile,
+  problemDoc = null,
 }) => {
   const text = (resolutionText || summary || '').trim();
   if (!problemId || !text) {
@@ -648,6 +665,61 @@ export const broadcastOfficialResolution = async ({
   const resolverName = adminProfile?.fullName || adminUser?.displayName || 'Workspace Admin';
   const resolverId = adminUser?.uid || 'admin';
 
+  // 1. Determine all eligible affected reporters
+  const reporterSet = new Set();
+
+  let targetProb = problemDoc || null;
+  if (!targetProb && workspaceId) {
+    const local = getLocalProblems(workspaceId);
+    targetProb = local.find((p) => p.id === problemId);
+  }
+
+  if (db) {
+    try {
+      const pSnap = await getDoc(doc(db, 'problems', problemId));
+      if (pSnap.exists()) {
+        targetProb = { id: pSnap.id, ...pSnap.data(), ...targetProb };
+      }
+    } catch (fetchErr) {
+      console.warn('[UNSAID Problem Service] Notice reading problem for reporters:', fetchErr);
+    }
+  }
+
+  if (targetProb) {
+    if (targetProb.authorId && targetProb.authorId !== 'anon_user') reporterSet.add(targetProb.authorId);
+    if (targetProb.createdBy && targetProb.createdBy !== 'anon_user') reporterSet.add(targetProb.createdBy);
+    if (targetProb.userId && targetProb.userId !== 'anon_user') reporterSet.add(targetProb.userId);
+    if (Array.isArray(targetProb.eligibleReporterIds)) {
+      targetProb.eligibleReporterIds.forEach((id) => id && id !== 'anon_user' && reporterSet.add(id));
+    }
+    if (Array.isArray(targetProb.affectedUserIds)) {
+      targetProb.affectedUserIds.forEach((id) => id && id !== 'anon_user' && reporterSet.add(id));
+    }
+    if (Array.isArray(targetProb.mergedReporterIds)) {
+      targetProb.mergedReporterIds.forEach((id) => id && id !== 'anon_user' && reporterSet.add(id));
+    }
+  }
+
+  const eligibleReporterIds = Array.from(reporterSet);
+
+  // 2. Create or activate Resolution Verification Poll
+  let poll = null;
+  try {
+    poll = await createOrActivateVerificationPoll({
+      problemId,
+      workspaceId: workspaceId || targetProb?.workspaceId,
+      resolutionText: text,
+      actionTaken: (actionTaken || '').trim(),
+      adminUser,
+      adminProfile,
+      eligibleReporterIds,
+    });
+  } catch (pollErr) {
+    console.error('[UNSAID Problem Service] Failed to initialize verification poll:', pollErr);
+  }
+
+  const resolutionCycleId = poll?.resolutionCycleId || `cycle_${Date.now()}`;
+
   const officialResolution = {
     resolutionText: text,
     summary: text,
@@ -655,18 +727,23 @@ export const broadcastOfficialResolution = async ({
     resolvedBy: resolverId,
     resolvedByName: resolverName,
     resolvedAt: new Date().toISOString(),
+    resolutionCycleId,
     workspaceId: workspaceId || '',
     problemId,
+    verificationStatus: 'pending',
   };
 
+  // 3. Mark problem in_verification (Do not mark permanently solved before verification is complete)
   if (workspaceId) {
     const local = getLocalProblems(workspaceId);
     const updated = local.map((p) =>
       p.id === problemId
         ? {
             ...p,
-            status: 'solved',
+            status: 'in_verification',
+            verificationStatus: 'pending',
             officialResolution,
+            eligibleReporterIds,
             updatedAt: new Date().toISOString(),
           }
         : p
@@ -677,13 +754,107 @@ export const broadcastOfficialResolution = async ({
   if (db) {
     const probRef = doc(db, 'problems', problemId);
     await updateDoc(probRef, {
-      status: 'solved',
+      status: 'in_verification',
+      verificationStatus: 'pending',
       officialResolution,
+      eligibleReporterIds,
       updatedAt: serverTimestamp(),
     });
+
+    // 4. Automatically deliver real-time notifications to all eligible reporters
+    for (const reporterId of eligibleReporterIds) {
+      if (reporterId && reporterId !== resolverId) {
+        try {
+          const notifRef = doc(collection(db, 'notifications'));
+          await setDoc(notifRef, {
+            userId: reporterId,
+            type: 'problem_resolved_verification',
+            title: 'Official Solution Published',
+            message: `An official solution was published for "${targetProb?.title || 'your query'}". Please verify if the problem has been resolved.`,
+            problemId,
+            workspaceId: workspaceId || targetProb?.workspaceId,
+            resolutionCycleId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        } catch (notifErr) {
+          console.warn('[UNSAID Problem Service] Reporter notification notice:', notifErr.message);
+        }
+      }
+    }
   }
 
   return officialResolution;
+};
+
+/**
+ * Merges duplicate problem reporter into an existing primary problem.
+ * Preserves audit history and adds the user to eligibleReporterIds.
+ */
+export const aggregateDuplicateProblem = async ({
+  targetProblemId,
+  duplicateProblemId,
+  workspaceId,
+}) => {
+  if (!targetProblemId || !duplicateProblemId) {
+    throw new Error('Target problem and duplicate problem IDs are required.');
+  }
+
+  let dupAuthorId = null;
+  if (db) {
+    try {
+      const dupSnap = await getDoc(doc(db, 'problems', duplicateProblemId));
+      if (dupSnap.exists()) {
+        const data = dupSnap.data();
+        dupAuthorId = data.authorId || data.createdBy;
+      }
+    } catch (err) {
+      console.warn('[UNSAID Problem Service] Duplicate fetch error:', err);
+    }
+  }
+
+  if (!dupAuthorId || dupAuthorId === 'anon_user') return;
+
+  if (db) {
+    const probRef = doc(db, 'problems', targetProblemId);
+    await updateDoc(probRef, {
+      eligibleReporterIds: arrayUnion(dupAuthorId),
+      affectedUserIds: arrayUnion(dupAuthorId),
+      mergedDuplicateIds: arrayUnion(duplicateProblemId),
+      updatedAt: serverTimestamp(),
+    });
+
+    try {
+      const pollRef = doc(db, 'resolutionVerificationPolls', targetProblemId);
+      const pSnap = await getDoc(pollRef);
+      if (pSnap.exists()) {
+        await updateDoc(pollRef, {
+          eligibleReporterIds: arrayUnion(dupAuthorId),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (pollErr) {
+      console.warn('[UNSAID Problem Service] Poll eligible reporters sync notice:', pollErr);
+    }
+  }
+
+  if (workspaceId) {
+    const local = getLocalProblems(workspaceId);
+    const updated = local.map((p) => {
+      if (p.id === targetProblemId) {
+        const mergedReporters = Array.from(
+          new Set([...(p.eligibleReporterIds || []), dupAuthorId])
+        );
+        return {
+          ...p,
+          eligibleReporterIds: mergedReporters,
+          affectedUserIds: mergedReporters,
+        };
+      }
+      return p;
+    });
+    saveLocalProblems(workspaceId, updated);
+  }
 };
 
 /**

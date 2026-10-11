@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Building2,
   XCircle,
-  Sparkles,
 } from 'lucide-react';
 
 import { useAuth } from '../hooks/useAuth';
@@ -22,6 +21,7 @@ import { GlassCard } from '../components/ui/GlassCard';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SectionHeader } from '../components/ui/SectionHeader';
+import { OfflineBanner } from '../components/common/OfflineBanner';
 import { RealtimeClock } from '../components/common/RealtimeClock';
 import { IdentityToggle } from '../components/common/IdentityToggle';
 import { DailyCheckInWidget } from '../components/checkin/DailyCheckInWidget';
@@ -30,7 +30,11 @@ import { SubmitProblemModal } from '../components/problem/SubmitProblemModal';
 import { WorkspaceHistoryModal } from '../components/history/WorkspaceHistoryModal';
 import { UserChatbotModal } from '../components/chat/UserChatbotModal';
 import { UnsaidLogoMark } from '../components/ui/UnsaidLogoMark';
-import { OfflineBanner } from '../components/common/OfflineBanner';
+import { Avatar } from '../components/ui/Avatar';
+import { ProfileBadge } from '../components/profile/ProfileBadge';
+import { ProfileCompletionBanner } from '../components/profile/ProfileCompletionBanner';
+import { ProfileModal } from '../components/profile/ProfileModal';
+import { getEffectiveProfile } from '../services/profileService';
 import { getShiftStatus } from '../config/shiftConfig';
 import { getWorkspaceProblems, subscribeToWorkspaceProblems } from '../services/problemService';
 import { syncDailySnapshotFromMetrics } from '../services/historyService';
@@ -46,6 +50,11 @@ export const UserDashboardShell = () => {
   const [reportIsEmergency, setReportIsEmergency] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [chatbotOpen, setChatbotOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
+  const effectiveProfile = useMemo(() => {
+    return getEffectiveProfile(userProfile, currentWorkspace?.id);
+  }, [userProfile, currentWorkspace?.id]);
 
   const greetingName =
     userProfile?.fullName ||
@@ -152,69 +161,109 @@ export const UserDashboardShell = () => {
       <OfflineBanner />
       <PageContainer size="lg" className="space-y-8">
       {/* 1. Header with dynamic workspace context and Live Clock */}
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <SectionHeader
-            title={`Welcome back, ${greetingName}`}
-            subtitle={
-              currentWorkspace
-                ? `Active Workspace: ${currentWorkspace.name} (${currentWorkspace.domain || 'community'}) · Query Resolution Core`
-                : 'No active workspace selected. Select or join an approved workspace to report queries.'
-            }
-            badge={
-              <Badge variant="cyan" size="sm" dot>
-                {currentWorkspace ? currentWorkspace.domain : 'Unassigned'}
-              </Badge>
-            }
-            action={
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setChatbotOpen(true)}
-                  disabled={!currentWorkspace}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-hover)] hover:bg-[var(--primary)]/15 border border-[var(--glass-border)] hover:border-[var(--primary)]/40 text-xs font-semibold text-[var(--text)] transition-all cursor-pointer shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed select-none"
-                  title="Open UNSAID AI Assistant"
-                >
-                  <UnsaidLogoMark size={20} animated={true} showShadow={false} />
-                  <span>AI Assistant</span>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={<History className="w-4 h-4" />}
-                  onClick={() => setHistoryModalOpen(true)}
-                  disabled={!currentWorkspace}
-                >
-                  Archive
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={<AlertTriangle className="w-4 h-4" />}
-                  onClick={handleOpenEmergencyReport}
-                  disabled={!currentWorkspace}
-                >
-                  Emergency
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={<Plus className="w-4 h-4" />}
-                  onClick={handleOpenNormalReport}
-                  disabled={!currentWorkspace}
-                >
-                  Report Problem
-                </Button>
-              </div>
-            }
-          />
-          {currentUser?.email && (
-            <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] pt-0.5 pl-1">
-              <span>Logged in as:</span>
-              <span className="font-semibold text-[var(--text)]">{currentUser.email}</span>
+      <div className="space-y-4">
+        <SectionHeader
+          title={`Welcome back, ${greetingName}`}
+          subtitle={
+            currentWorkspace
+              ? `Active Workspace: ${currentWorkspace.name} (${currentWorkspace.domain || 'community'}) · Query Resolution Core`
+              : 'No active workspace selected. Select or join an approved workspace to report queries.'
+          }
+          badge={
+            <Badge variant="cyan" size="sm" dot>
+              {currentWorkspace ? currentWorkspace.domain : 'Unassigned'}
+            </Badge>
+          }
+          action={
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setChatbotOpen(true)}
+                disabled={!currentWorkspace}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-hover)] hover:bg-[var(--primary)]/15 border border-[var(--glass-border)] hover:border-[var(--primary)]/40 text-xs font-semibold text-[var(--text)] transition-all cursor-pointer shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                title="Open UNSAID AI Assistant"
+              >
+                <UnsaidLogoMark size={20} animated={true} showShadow={false} />
+                <span>AI Assistant</span>
+              </button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<History className="w-4 h-4" />}
+                onClick={() => setHistoryModalOpen(true)}
+                disabled={!currentWorkspace}
+              >
+                Archive
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<AlertTriangle className="w-4 h-4" />}
+                onClick={handleOpenEmergencyReport}
+                disabled={!currentWorkspace}
+              >
+                Emergency
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={handleOpenNormalReport}
+                disabled={!currentWorkspace}
+              >
+                Report Problem
+              </Button>
             </div>
-          )}
-        </div>
+          }
+        />
+
+        {/* Profile Completion Non-Intrusive Prompt */}
+        <ProfileCompletionBanner
+          profile={effectiveProfile}
+          isAdmin={false}
+          onOpenEdit={() => setProfileModalOpen(true)}
+        />
+
+        {/* Member Profile Identity Bar */}
+        {currentUser && (
+          <div className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs shadow-sm flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <Avatar
+                name={effectiveProfile?.fullName || currentUser?.displayName || currentUser?.email || 'Member'}
+                src={
+                  effectiveProfile?.avatarPreference === 'initials'
+                    ? null
+                    : effectiveProfile?.avatarUrl || currentUser?.photoURL
+                }
+                size="sm"
+                isOnline={true}
+              />
+              <div className="flex flex-col text-left leading-tight">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs text-[var(--text)]">
+                    {effectiveProfile?.fullName || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Member')}
+                  </span>
+                  <ProfileBadge profile={effectiveProfile} size="xs" />
+                </div>
+                {currentUser?.email && (
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5">
+                    {currentUser.email}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+              <Button
+                variant="secondary"
+                size="xs"
+                onClick={() => setProfileModalOpen(true)}
+              >
+                Edit Profile
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Real-time Workspace Join Request Notification Banner */}
         {latestRequestNotif && (
@@ -474,6 +523,13 @@ export const UserDashboardShell = () => {
           </button>
         </aside>
       )}
+
+      {/* Dynamic Profile Modal */}
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        isAdmin={false}
+      />
     </PageContainer>
     </>
   );

@@ -23,6 +23,10 @@ import { QueryTriageWorkspace } from '../components/triage/QueryTriageWorkspace'
 import { AdminAISummaryModal } from '../components/triage/AdminAISummaryModal';
 import { OfflineBanner } from '../components/common/OfflineBanner';
 import { subscribeToWorkspaceProblems } from '../services/problemService';
+import { ProfileBadge } from '../components/profile/ProfileBadge';
+import { ProfileCompletionBanner } from '../components/profile/ProfileCompletionBanner';
+import { ProfileModal } from '../components/profile/ProfileModal';
+import { getEffectiveProfile } from '../services/profileService';
 
 /**
  * AdminDashboardShell Page
@@ -35,6 +39,11 @@ export const AdminDashboardShell = () => {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [aiSummaryModalOpen, setAiSummaryModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
+  const effectiveProfile = useMemo(() => {
+    return getEffectiveProfile(userProfile, currentWorkspace?.id);
+  }, [userProfile, currentWorkspace?.id]);
 
   // Real-time Firestore workspace problems state
   const [problems, setProblems] = useState([]);
@@ -153,16 +162,23 @@ export const AdminDashboardShell = () => {
         }
       />
 
+      {/* Profile Completion Non-Intrusive Prompt */}
+      <ProfileCompletionBanner
+        profile={effectiveProfile}
+        isAdmin={true}
+        onOpenEdit={() => setProfileModalOpen(true)}
+      />
+
       {/* Administrator Profile Banner */}
       {currentUser && (
         <div className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs shadow-sm flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Avatar
-              name={userProfile?.fullName || currentUser?.displayName || currentUser?.email || 'Admin'}
+              name={effectiveProfile?.fullName || currentUser?.displayName || currentUser?.email || 'Admin'}
               src={
-                userProfile?.avatarPreference === 'initials'
+                effectiveProfile?.avatarPreference === 'initials'
                   ? null
-                  : userProfile?.avatarUrl || currentUser?.photoURL
+                  : effectiveProfile?.avatarUrl || currentUser?.photoURL
               }
               size="md"
               isOnline={true}
@@ -170,11 +186,12 @@ export const AdminDashboardShell = () => {
             <div className="flex flex-col text-left leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-sm text-[var(--text)]">
-                  {userProfile?.fullName || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Administrator')}
+                  {effectiveProfile?.fullName || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Administrator')}
                 </span>
                 <Badge variant="cyan" size="xs">
                   Workspace Administrator
                 </Badge>
+                <ProfileBadge profile={effectiveProfile} size="xs" />
               </div>
               {currentUser?.email && (
                 <span className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
@@ -184,7 +201,7 @@ export const AdminDashboardShell = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+          <div className="flex items-center gap-2.5 text-[11px] text-[var(--text-muted)]">
             <span className="inline-flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
               Session Verified
@@ -193,6 +210,14 @@ export const AdminDashboardShell = () => {
             <span className="text-[var(--text-secondary)] font-medium">
               {currentWorkspace?.name || 'Workspace Manager'}
             </span>
+            <Button
+              variant="secondary"
+              size="xs"
+              onClick={() => setProfileModalOpen(true)}
+              className="ml-1"
+            >
+              Edit Profile
+            </Button>
           </div>
         </div>
       )}
@@ -355,6 +380,11 @@ export const AdminDashboardShell = () => {
         onClose={() => setAiSummaryModalOpen(false)}
         workspace={currentWorkspace}
         problems={problems}
+      />
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        isAdmin={true}
       />
     </PageContainer>
     </>

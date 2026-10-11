@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  User,
-  Mail,
   Shield,
   Building2,
   LogOut,
-  Save,
-  CheckCircle2,
-  AlertCircle,
   AlertTriangle,
   Trash2,
+  AlertCircle,
+  Briefcase,
+  GraduationCap,
 } from 'lucide-react';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -22,6 +20,10 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
 import { ModalShell } from '../../components/ui/ModalShell';
+import { DynamicProfileForm } from '../../components/profile/DynamicProfileForm';
+import { ProfileBadge } from '../../components/profile/ProfileBadge';
+import { ProfileCompletionBanner } from '../../components/profile/ProfileCompletionBanner';
+import { getEffectiveProfile, isProfileComplete } from '../../services/profileService';
 import { getFriendlyFirestoreErrorMessage, getFriendlyAuthErrorMessage } from '../../utils/firebaseErrors';
 
 export const AccountPage = () => {
@@ -34,53 +36,40 @@ export const AccountPage = () => {
     deleteAccount,
     reauthenticateWithGoogle,
   } = useAuth();
-  const { currentWorkspace, workspaces } = useWorkspace();
+  const { currentWorkspace, workspaces, switchWorkspace } = useWorkspace();
   const navigate = useNavigate();
 
-  const [fullName, setFullName] = useState(userProfile?.fullName || currentUser?.displayName || '');
-  const [avatarPreference, setAvatarPreference] = useState(
-    userProfile?.avatarPreference || 'initials'
-  );
-  // UX save flow: 'idle' (Save) -> 'saving' (Saving...) -> 'saved' (Saved) -> 'idle' (Save)
+  // UX save flow: 'idle' (Save) -> 'saving' (Saving...) -> 'saved' (Saved) -> 'idle'
   const [saveStatus, setSaveStatus] = useState('idle');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  // Keep local inputs synchronized when userProfile is loaded asynchronously
-  const syncedProfileRef = useRef(null);
-  useEffect(() => {
-    const profileKey = `${userProfile?.fullName || currentUser?.displayName || ''}:${userProfile?.avatarPreference || ''}`;
-    if (syncedProfileRef.current !== profileKey && (userProfile || currentUser)) {
-      syncedProfileRef.current = profileKey;
-      setFullName(userProfile?.fullName || currentUser?.displayName || '');
-      setAvatarPreference(userProfile?.avatarPreference || 'initials');
-    }
-  }, [userProfile, currentUser]);
+  // Active workspace profile resolution
+  const effectiveProfile = useMemo(() => {
+    return getEffectiveProfile(userProfile, currentWorkspace?.id);
+  }, [userProfile, currentWorkspace?.id]);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
+  const profileComplete = useMemo(() => {
+    return isProfileComplete(effectiveProfile);
+  }, [effectiveProfile]);
+
+  const handleSaveProfile = async ({ data, workspaceId, asDefault }) => {
     if (saveStatus === 'saving') return;
 
-    const trimmedName = fullName.trim();
-    if (!trimmedName) {
-      setError('Display name cannot be blank.');
-      return;
-    }
-
     setError('');
+    setSuccessMessage('');
     setSaveStatus('saving');
 
     try {
-      await updateProfileData({
-        fullName: trimmedName,
-        avatarPreference,
-      });
+      await updateProfileData(data, { workspaceId, asDefault });
       setSaveStatus('saved');
-      // Return to normal state after 2.5 seconds
+      setSuccessMessage('Profile saved and updated successfully!');
       setTimeout(() => {
         setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev));
-      }, 2500);
+        setSuccessMessage('');
+      }, 3000);
     } catch (err) {
-      console.error('[UNSAID Profile Update Error]', err);
+      console.error('[UNSAID Profile Save Error]', err);
       setError(getFriendlyFirestoreErrorMessage(err, "Profile couldn't be updated. Please try again."));
       setSaveStatus('idle');
     }
@@ -95,15 +84,12 @@ export const AccountPage = () => {
   const [isGoogleVerified, setIsGoogleVerified] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  // Robust provider detection checking all providerData entries
   const hasPasswordProvider = currentUser?.providerData?.some((p) => p.providerId === 'password');
   const hasGoogleProvider = currentUser?.providerData?.some((p) => p.providerId === 'google.com');
 
-  // If user has Google and not password -> Google flow; if password exists -> password flow
   const isGoogleAccount = hasGoogleProvider && !hasPasswordProvider;
   const isPasswordAccount = hasPasswordProvider || !hasGoogleProvider;
 
-  // Execute deletion helper
   const executeDelete = async (options) => {
     setDeleteError('');
     setIsDeleting(true);
@@ -127,14 +113,12 @@ export const AccountPage = () => {
     }
   };
 
-  // Google Re-authentication Handler
   const handleGoogleVerify = async () => {
     setDeleteError('');
     setIsVerifyingGoogle(true);
     try {
       await reauthenticateWithGoogle();
       setIsGoogleVerified(true);
-      // If user has already entered DELETE confirmation, perform immediate deletion
       if (deleteConfirmText.trim() === 'DELETE') {
         await executeDelete({ isGoogleReauthenticated: true });
       }
@@ -154,7 +138,6 @@ export const AccountPage = () => {
     }
   };
 
-  // Delete Account Confirmation Click
   const handleDeleteAccount = async () => {
     if (deleteConfirmText.trim() !== 'DELETE') {
       setDeleteError('Please type DELETE exactly to confirm.');
@@ -192,14 +175,14 @@ export const AccountPage = () => {
     : 'Active Session';
 
   return (
-    <PageContainer size="md" className="space-y-8">
+    <PageContainer size="lg" className="space-y-6">
       {/* Header */}
       <SectionHeader
-        title="Account & Profile Settings"
-        subtitle="Manage your personal profile details and authenticated workspace membership."
+        title="Account & Dynamic Profile"
+        subtitle="Manage personal, institutional, and workspace identity settings. Form adapts dynamically."
         badge={
           <Badge variant={isAdmin ? 'cyan' : 'primary'} size="sm" dot>
-            {isAdmin ? 'Administrator' : 'Standard Member'}
+            {isAdmin ? 'Platform Administrator' : 'Standard Member'}
           </Badge>
         }
         action={
@@ -215,392 +198,307 @@ export const AccountPage = () => {
         }
       />
 
+      {/* Completion Banner if Incomplete */}
+      <ProfileCompletionBanner
+        profile={effectiveProfile}
+        isAdmin={isAdmin}
+      />
+
       {/* Main Profile Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left Column: Identity Overview Card */}
-        <GlassCard className="p-6 text-center space-y-4 flex flex-col items-center justify-center">
-          <Avatar
-            name={fullName || userProfile?.fullName || currentUser?.displayName || 'User'}
-            src={avatarPreference === 'initials' ? null : (userProfile?.avatarUrl || currentUser?.photoURL)}
-            size="lg"
-            isOnline={true}
-          />
-          <div className="space-y-1">
-            <h3 className="text-lg font-bold text-[var(--text)]">
-              {fullName || userProfile?.fullName || currentUser?.displayName || 'Member'}
-            </h3>
-            <p className="text-xs text-[var(--text-muted)] truncate max-w-[220px]">
-              {currentUser?.email}
-            </p>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column (Identity Cards) */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Identity Overview Card */}
+          <GlassCard className="p-6 text-center space-y-4 flex flex-col items-center justify-center">
+            <Avatar
+              name={effectiveProfile?.fullName || currentUser?.displayName || 'User'}
+              src={effectiveProfile?.avatarPreference === 'initials' ? null : (effectiveProfile?.avatarUrl || currentUser?.photoURL)}
+              size="lg"
+              isOnline={true}
+            />
 
-          <div className="pt-2 flex flex-wrap gap-2 justify-center">
-            <Badge variant={isAdmin ? 'cyan' : 'primary'} size="sm">
-              Role: {userProfile?.role || (isAdmin ? 'Admin' : 'User')}
-            </Badge>
-            <Badge variant="neutral" size="sm">
-              {workspaces.length} Workspace{workspaces.length === 1 ? '' : 's'}
-            </Badge>
-          </div>
-        </GlassCard>
+            <div className="space-y-1 w-full px-2">
+              <h3 className="text-base font-bold text-[var(--text)] truncate">
+                {effectiveProfile?.fullName || currentUser?.displayName || 'Member'}
+              </h3>
+              <p className="text-xs text-[var(--text-muted)] truncate">
+                {currentUser?.email}
+              </p>
+            </div>
 
-        {/* Right Column: Editable Profile Settings */}
-        <div className="md:col-span-2 space-y-6">
-          <GlassCard variant="panel" className="p-6 space-y-5">
-            <h4 className="text-base font-semibold text-[var(--text)] flex items-center gap-2">
-              <User className="w-4 h-4 text-[var(--primary)]" />
-              <span>Personal Details</span>
-            </h4>
+            {/* Compact Professional / Academic Profile Badge */}
+            <div className="pt-1 flex flex-col items-center gap-1.5 w-full">
+              <ProfileBadge profile={effectiveProfile} fallback="Profile pending setup" />
 
-            {error && (
-              <div className="p-3.5 rounded-2xl bg-[var(--danger-light)] border border-[var(--danger)]/30 text-[var(--danger)] text-xs flex items-center gap-2 animate-fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-4">
-              {/* Full Name */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (error) setError('');
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-                />
-              </div>
-
-              {/* Avatar Style Preference */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                  Avatar Display Style
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAvatarPreference('initials')}
-                    className={`p-2.5 rounded-2xl border text-xs text-left transition-all ${
-                      avatarPreference === 'initials'
-                        ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)] font-semibold shadow-sm'
-                        : 'border-[var(--glass-border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    Initials Monogram
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAvatarPreference('photo')}
-                    className={`p-2.5 rounded-2xl border text-xs text-left transition-all ${
-                      avatarPreference === 'photo'
-                        ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)] font-semibold shadow-sm'
-                        : 'border-[var(--glass-border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    Photo Avatar
-                  </button>
-                </div>
-              </div>
-
-              {/* Email (Read-only for security) */}
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                    Email Address
-                  </label>
-                  <span className="text-[10px] text-[var(--text-muted)]">Managed by Firebase Auth</span>
-                </div>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    disabled
-                    value={currentUser?.email || ''}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[var(--surface)]/50 border border-[var(--glass-border)] text-sm text-[var(--text-muted)] cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              {/* Role (Read-only for security) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                    Assigned Role
-                  </label>
-                  <span className="text-[10px] text-[var(--text-muted)]">Protected Field</span>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--surface)]/50 border border-[var(--glass-border)]">
-                  <Shield className="w-4 h-4 text-[var(--primary)]" />
-                  <span className="text-xs font-semibold text-[var(--text)] capitalize">
-                    {userProfile?.role || (isAdmin ? 'admin' : 'user')}
-                  </span>
-                  <span className="text-[11px] text-[var(--text-muted)] ml-auto">
-                    Role is determined by server authorization
-                  </span>
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <div className="flex justify-end pt-2">
-                <Button
-                  type="submit"
-                  variant={saveStatus === 'saved' ? 'secondary' : 'primary'}
-                  size="md"
-                  disabled={saveStatus === 'saving' || !fullName.trim()}
-                  isLoading={saveStatus === 'saving'}
-                  icon={
-                    saveStatus === 'saved' ? (
-                      <CheckCircle2 className="w-4 h-4 text-[var(--success)]" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )
-                  }
-                  className={saveStatus === 'saved' ? 'border-[var(--success)]/40 text-[var(--success)]' : ''}
+              <div className="flex items-center gap-1.5 pt-1 flex-wrap justify-center">
+                <Badge
+                  variant={profileComplete ? 'low' : 'warning'}
+                  size="xs"
+                  dot
                 >
-                  {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save'}
-                </Button>
-              </div>
-            </form>
-          </GlassCard>
-
-          {/* Current Workspace Card */}
-          <GlassCard className="p-6 space-y-4">
-            <h4 className="text-base font-semibold text-[var(--text)] flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[var(--cyan)]" />
-              <span>Active Workspace Status</span>
-            </h4>
-
-            {currentWorkspace ? (
-              <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-sm font-bold text-[var(--text)]">
-                    {currentWorkspace.name}
-                  </span>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {currentWorkspace.description || 'No description provided.'}
-                  </p>
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-[var(--text-muted)]">
-                    <span className="uppercase tracking-wider font-semibold text-[var(--cyan)]">
-                      {currentWorkspace.domain}
-                    </span>
-                    <span>·</span>
-                    <span>Joined: {formattedJoinDate}</span>
-                  </div>
-                </div>
-                <Badge variant="low" size="sm">
-                  Active Member
+                  {profileComplete ? 'Profile Complete' : 'Profile Incomplete'}
+                </Badge>
+                <Badge variant={isAdmin ? 'cyan' : 'neutral'} size="xs">
+                  {isAdmin ? 'Admin Auth' : 'Member Auth'}
                 </Badge>
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-[var(--glass-border)] w-full flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span>Workspaces:</span>
+              <strong className="text-[var(--text)]">{workspaces.length}</strong>
+            </div>
+
+            <div className="w-full flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span>Member Since:</span>
+              <strong className="text-[var(--text)]">{formattedJoinDate}</strong>
+            </div>
+          </GlassCard>
+
+          {/* Active Workspace Status Card */}
+          <GlassCard className="p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text)] flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                <span>Active Workspace</span>
+              </h4>
+              {effectiveProfile?.isWorkspaceSpecific && (
+                <Badge variant="cyan" size="xs">
+                  Customized for this WS
+                </Badge>
+              )}
+            </div>
+
+            {currentWorkspace ? (
+              <div className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-bold text-[var(--text)]">
+                      {currentWorkspace.name}
+                    </span>
+                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">
+                      {currentWorkspace.description || 'No description provided.'}
+                    </p>
+                  </div>
+                  <Badge variant="low" size="xs">
+                    Connected
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-[var(--text-muted)]">
+                  <span className="uppercase tracking-wider font-semibold text-[var(--cyan)]">
+                    {currentWorkspace.domain}
+                  </span>
+                  <span>·</span>
+                  <span>Domain verified</span>
+                </div>
+              </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text-muted)] text-center">
-                No active workspace selected. Join a workspace using an admin invitation link.
+              <div className="p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text-muted)] text-center">
+                No active workspace selected.
+              </div>
+            )}
+
+            {workspaces.length > 1 && (
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[11px] font-semibold text-[var(--text-secondary)] block">
+                  Switch Active Workspace:
+                </label>
+                <select
+                  value={currentWorkspace?.id || ''}
+                  onChange={(e) => switchWorkspace && switchWorkspace(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--primary)] cursor-pointer"
+                >
+                  {workspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id} className="bg-[var(--surface)] text-[var(--text)]">
+                      {ws.name} ({ws.domain})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </GlassCard>
 
-          {/* DANGER ZONE */}
-          <div className="pt-2">
-            <div className="p-6 rounded-3xl bg-[var(--danger-light)]/10 border border-[var(--danger)]/30 space-y-4">
-              <div className="flex items-center gap-2 text-[var(--danger)]">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                <h4 className="text-base font-bold tracking-tight">Danger Zone</h4>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-[var(--text)]">Delete Account</span>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Permanently delete your UNSAID account and personal profile data.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => {
-                    setDeleteError('');
-                    setDeleteConfirmText('');
-                    setReauthPassword('');
-                    setIsDeleteModalOpen(true);
-                  }}
-                  icon={<Trash2 className="w-4 h-4" />}
-                  className="shrink-0"
-                >
-                  Delete Account
-                </Button>
-              </div>
+          {/* Security & Access Info Card */}
+          <GlassCard className="p-5 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text)] flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-[var(--primary)]" />
+              <span>Permission Security</span>
+            </h4>
+            <div className="text-xs text-[var(--text-muted)] space-y-2 leading-relaxed">
+              <p>
+                Your <strong className="text-[var(--text)]">Server Permission Role</strong> ({isAdmin ? 'Administrator' : 'Member'}) is governed strictly by server authorization and cannot be changed by profile modifications.
+              </p>
+              <p>
+                Your <strong className="text-[var(--text)]">Professional Role</strong> ({effectiveProfile?.professionalRole || 'Unset'}) provides descriptive academic/corporate context to your team.
+              </p>
             </div>
-          </div>
+          </GlassCard>
+        </div>
+
+        {/* Right Column: Dynamic Profile Settings Form */}
+        <div className="lg:col-span-8 space-y-6">
+          <GlassCard variant="panel" className="p-6 sm:p-7 space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)] flex-wrap gap-2">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-bold text-[var(--text)] flex items-center gap-2">
+                  {isAdmin ? (
+                    <Briefcase className="w-4 h-4 text-[var(--cyan)]" />
+                  ) : (
+                    <GraduationCap className="w-4 h-4 text-[var(--primary)]" />
+                  )}
+                  <span>{isAdmin ? 'Administrator Profile Details' : 'Member Profile Details'}</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)]">
+                  The form below adapts dynamically based on your selected role.
+                </p>
+              </div>
+
+              {effectiveProfile?.isWorkspaceSpecific && (
+                <Badge variant="cyan" size="sm">
+                  Active WS: {currentWorkspace?.name}
+                </Badge>
+              )}
+            </div>
+
+            {/* Dynamic Profile Form Component */}
+            <DynamicProfileForm
+              isAdmin={isAdmin}
+              currentUser={currentUser}
+              initialData={effectiveProfile || {}}
+              activeWorkspace={currentWorkspace}
+              onSave={handleSaveProfile}
+              isSaving={saveStatus === 'saving'}
+              error={error}
+              successMessage={successMessage}
+            />
+          </GlassCard>
+
+          {/* Danger Zone: Delete Account */}
+          <GlassCard className="p-6 border-l-4 border-l-[var(--danger)] space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-[var(--danger)] flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Delete Account</span>
+                </h4>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  Permanently delete your UNSAID user account and revoke access to all workspaces. This action is irreversible.
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  setDeleteConfirmText('');
+                  setReauthPassword('');
+                  setDeleteError('');
+                  setIsDeleteModalOpen(true);
+                }}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Account
+              </Button>
+            </div>
+          </GlassCard>
         </div>
       </div>
 
-      {/* Confirmation Modal for Account Deletion */}
-      <ModalShell
-        isOpen={isDeleteModalOpen}
-        onClose={() => {
-          if (!isDeleting && !isVerifyingGoogle) {
-            setIsDeleteModalOpen(false);
-            setDeleteError('');
-            setDeleteConfirmText('');
-            setReauthPassword('');
-            setIsGoogleVerified(false);
-          }
-        }}
-        title="Delete Account"
-        subtitle="Permanently delete your UNSAID account and personal profile data."
-        maxWidth="md"
-        footer={
-          <div className="flex items-center justify-end gap-3 w-full">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={isDeleting || isVerifyingGoogle}
-              onClick={() => {
-                setIsDeleteModalOpen(false);
-                setDeleteError('');
-                setDeleteConfirmText('');
-                setReauthPassword('');
-                setIsGoogleVerified(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={
-                deleteConfirmText.trim() !== 'DELETE' ||
-                (isPasswordAccount && !reauthPassword) ||
-                (isGoogleAccount && !isGoogleVerified) ||
-                isDeleting ||
-                isVerifyingGoogle
-              }
-              isLoading={isDeleting}
-              onClick={handleDeleteAccount}
-              icon={<Trash2 className="w-4 h-4" />}
-            >
-              {isDeleting ? 'Deleting Account...' : 'Delete Account'}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4 pt-1">
-          <div className="p-3.5 rounded-2xl bg-[var(--danger-light)]/20 border border-[var(--danger)]/30 text-xs text-[var(--danger)] space-y-1">
-            <div className="flex items-center gap-2 font-semibold">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>This action is permanent and cannot be undone</span>
-            </div>
-            <p className="text-[11px] leading-relaxed text-[var(--text-secondary)] pl-6">
-              Your profile, personal settings, and direct workspace memberships will be deleted. Any active sessions will be terminated immediately.
-            </p>
-          </div>
-
-          {deleteError && (
-            <div className="p-3 rounded-xl bg-[var(--danger-light)] border border-[var(--danger)]/30 text-xs text-[var(--danger)] flex items-center gap-2 animate-fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{deleteError}</span>
-            </div>
-          )}
-
-          {/* Password Authentication Verification (Shown ONLY for Password Accounts) */}
-          {isPasswordAccount && (
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                Account Password <span className="text-[var(--danger)]">*</span>
-              </label>
-              <input
-                type="password"
-                value={reauthPassword}
-                onChange={(e) => {
-                  setReauthPassword(e.target.value);
-                  if (deleteError) setDeleteError('');
-                }}
-                placeholder="Enter your current password"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-              />
-              <p className="text-[10px] text-[var(--text-muted)]">
-                Required by Firebase Authentication to verify your identity.
-              </p>
-            </div>
-          )}
-
-          {/* Google Authentication Verification (Shown ONLY for Google Accounts) */}
-          {isGoogleAccount && (
-            <div className="space-y-3 p-4 rounded-2xl bg-[var(--surface)] border border-[var(--glass-border)]">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text)]">
-                <Shield className="w-4 h-4 text-[var(--cyan)]" />
-                <span>Google Account</span>
+      {/* Delete Account Modal */}
+      {isDeleteModalOpen && (
+        <ModalShell
+          isOpen={isDeleteModalOpen}
+          onClose={isDeleting ? undefined : () => setIsDeleteModalOpen(false)}
+          title="Delete Account Permanently"
+          description="Confirm permanent deletion of your UNSAID account."
+          size="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-2xl bg-[var(--danger-light)] border border-[var(--danger)]/30 text-[var(--danger)] flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold">Warning: Permanent Action</span>
+                <p className="text-[11px] leading-relaxed">
+                  This will delete your credentials and remove your memberships across all workspaces. This action cannot be undone.
+                </p>
               </div>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                This account is connected with Google. Continue with Google to verify your identity before permanently deleting your account.
-              </p>
+            </div>
 
-              {isGoogleVerified ? (
-                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[var(--success-light)] border border-[var(--success)]/30 text-xs text-[var(--success)] font-medium">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>Identity verified with Google ({currentUser?.email})</span>
-                </div>
-              ) : (
+            {deleteError && (
+              <div className="p-3 rounded-2xl bg-[var(--danger-light)] border border-[var(--danger)]/40 text-[var(--danger)] text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            {isPasswordAccount && (
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                  Verify Account Password
+                </label>
+                <input
+                  type="password"
+                  value={reauthPassword}
+                  onChange={(e) => setReauthPassword(e.target.value)}
+                  placeholder="Enter your current password"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--danger)]"
+                />
+              </div>
+            )}
+
+            {isGoogleAccount && (
+              <div className="space-y-2 p-3 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-center">
+                <span className="text-[11px] text-[var(--text-muted)] block">
+                  This account was created via Google Sign-In. Verification with Google is required.
+                </span>
                 <Button
                   type="button"
-                  variant="secondary"
-                  size="md"
-                  fullWidth
-                  isLoading={isVerifyingGoogle}
-                  disabled={isDeleting}
+                  variant={isGoogleVerified ? 'secondary' : 'primary'}
+                  size="sm"
                   onClick={handleGoogleVerify}
-                  icon={
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        fill="#4285F4"
-                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.97 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                      />
-                    </svg>
-                  }
+                  isLoading={isVerifyingGoogle}
+                  disabled={isVerifyingGoogle || isGoogleVerified}
                 >
-                  Continue with Google
+                  {isGoogleVerified ? 'Google Identity Verified' : 'Verify with Google'}
                 </Button>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          <div className="space-y-1.5 pt-2">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-              Type <span className="font-mono font-bold text-[var(--danger)]">DELETE</span> to confirm
-            </label>
-            <input
-              type="text"
-              value={deleteConfirmText}
-              onChange={(e) => {
-                setDeleteConfirmText(e.target.value);
-                if (deleteError) setDeleteError('');
-              }}
-              placeholder="DELETE"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs font-mono text-[var(--text)] focus:outline-none focus:border-[var(--danger)]"
-            />
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                Type <strong className="text-[var(--danger)] font-mono">DELETE</strong> to confirm:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--glass-border)] text-xs text-[var(--text)] font-mono focus:outline-none focus:border-[var(--danger)]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--glass-border)]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleDeleteAccount}
+                isLoading={isDeleting}
+                disabled={isDeleting || deleteConfirmText.trim() !== 'DELETE'}
+              >
+                Permanently Delete
+              </Button>
+            </div>
           </div>
-        </div>
-      </ModalShell>
+        </ModalShell>
+      )}
     </PageContainer>
   );
 };
